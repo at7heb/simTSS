@@ -14,10 +14,10 @@ defmodule Sds.Process do
 
   @n_virtual_pages 8
 
-  def setup(%__MODULE__{} = p, memory, map, pc, a, b, x)
+  def setup(%__MODULE__{} = p, memory, map, pc, a, b, x, ovf \\ 0)
       when is_tuple(map) and tuple_size(map) == @n_virtual_pages and is_list(memory) and
              length(memory) >= 1 do
-    new_registers = registers(a, b, x, pc)
+    new_registers = registers(a, b, x, pc, ovf)
     %{p | registers: new_registers, memory: memory, map: map}
   end
 
