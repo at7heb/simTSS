@@ -77,6 +77,7 @@ defmodule Sds.Memory do
     v_page = div(v_address, @page_size)
     address_in_page = rem(v_address, @page_size)
     p_page = elem(map, v_page)
-    (p_page * @page_size + address_in_page) # the return value
+    # the return value
+    p_page * @page_size + address_in_page
   end
 end

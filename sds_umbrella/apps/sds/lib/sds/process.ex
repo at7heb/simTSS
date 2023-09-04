@@ -4,9 +4,19 @@ defmodule Sds.Process do
   instruction, memory read, and memory write counts are also available
   but not crucial to execution.
   """
-  defstruct registers: {0,0,0,0,0}, map: {}, memory: [], state: :nil, i_count: 0, r_count: 0, w_count: 0
+  defstruct registers: {0, 0, 0, 0, 0},
+            map: {},
+            memory: [],
+            state: nil,
+            i_count: 0,
+            r_count: 0,
+            w_count: 0
 
-  def setup(%__MODULE__{} = p, memory, map, pc, a, b, x) do
+  @n_virtual_pages 8
+
+  def setup(%__MODULE__{} = p, memory, map, pc, a, b, x)
+      when is_tuple(map) and tuple_size(map) == @n_virtual_pages and is_list(memory) and
+             length(memory) >= 1 do
     new_registers = registers(a, b, x, pc)
     %{p | registers: new_registers, memory: memory, map: map}
   end
@@ -14,7 +24,8 @@ defmodule Sds.Process do
   @doc """
   get the specified register
   """
-  def get_register(%__MODULE__{registers: r} = _process, register) when is_atom(register) and is_tuple(r) do
+  def get_register(%__MODULE__{registers: r} = _process, register)
+      when is_atom(register) and is_tuple(r) do
     case register do
       :a -> registera(r)
       :b -> registerb(r)
