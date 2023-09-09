@@ -21,9 +21,13 @@ defmodule Sds.Machine do
 
   def add_process(%__MODULE__{} = mach, %Process{} = p, %Memory{} = mem) do
     {n_memory, map} = update_memory(mach.memory, mem)
-    new_p = Process.set_map(map)
-    n_processes = new_p | m.processes
-    n_run_queue = :queue.in(new_p)
-    %{m | processes: n_processes, run_queue: n_run_queue, memory: n_memory}
+    new_p = Process.set_map(p, map)
+    n_processes = [new_p | mach.processes]
+    n_run_queue = :queue.in(mach.run_queue, new_p)
+    %{mach | processes: n_processes, run_queue: n_run_queue, memory: n_memory}
+  end
+
+  defp update_memory(%Memory{} = mm, content) when is_list(content) do
+    {mm, {0, 0, 0, 0, 0, 0, 0, 0}}
   end
 end

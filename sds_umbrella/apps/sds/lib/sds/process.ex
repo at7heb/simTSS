@@ -5,7 +5,7 @@ defmodule Sds.Process do
   but not crucial to execution.
   """
   defstruct registers: {0, 0, 0, 0, 0},
-            map: {},
+            map: {:a, :a, :a, :a, :a, :a, :a, :a},
             account: "@7hb",
             name: "",
             state: nil,
@@ -15,13 +15,14 @@ defmodule Sds.Process do
             r_count: 0,
             w_count: 0
 
-  @n_virtual_pages 8
+  # @n_virtual_pages 8
+  @max_reg 16_777_215
+  @max_pc 16383
 
   @doc """
   set up registers; memory is set up when process is added to the machine
   """
-  def setup(%__MODULE__{} = p, pc, a, b, x, ovf \\ 0)
-      when is_tuple(map) and tuple_size(map) == @n_virtual_pages and is_list(memory) do
+  def setup(%__MODULE__{} = p, a, b, x, pc, ovf \\ 0) do
     new_registers = registers(a, b, x, pc, ovf)
     %{p | registers: new_registers}
   end
@@ -48,9 +49,30 @@ defmodule Sds.Process do
   @doc """
   set the memory map
   """
-  def set_map(%__MODULE__{} - p, n_map), do: %{p | map: n_map}
+  def set_map(%__MODULE__{} = p, n_map), do: %{p | map: n_map}
 
-  defp registers(a, b, x, pc, ovf \\ 0), do: {a, b, x, pc, ovf}
+  @doc """
+  registers must be in range 0 <= register < max
+  max is 2^24 for a, b, x
+  max is 2^14 for pc
+  max is 1 for ovf
+
+  The guards are applied one at a time. This might be ugly!??!
+  """
+  def registers(a, b, x, pc, ovf \\ 0) when is_integer(a) and a >= 0 and a <= @max_reg,
+    do: registers1(a, b, x, pc, ovf)
+
+  def registers1(a, b, x, pc, ovf) when is_integer(b) and b >= 0 and b <= @max_reg,
+    do: registers2(a, b, x, pc, ovf)
+
+  def registers2(a, b, x, pc, ovf) when is_integer(x) and x >= 0 and x <= @max_reg,
+    do: registers3(a, b, x, pc, ovf)
+
+  def registers3(a, b, x, pc, ovf) when is_integer(pc) and pc >= 0 and pc <= @max_pc,
+    do: registers4(a, b, x, pc, ovf)
+
+  def registers4(a, b, x, pc, ovf) when is_integer(ovf) and ovf >= 0 and ovf <= 1,
+    do: {a, b, x, pc, ovf}
 
   defp registera({a, _, _, _, _} = _registers), do: a
   defp registerb({_, b, _, _, _} = _registers), do: b
