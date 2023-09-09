@@ -13,7 +13,6 @@ defmodule ProcessTest do
 
   @n_virtual_pages 8
 
-
   test "initial process" do
     p = %Process{}
     assert p.registers == {0, 0, 0, 0, 0}

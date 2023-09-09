@@ -6,19 +6,24 @@ defmodule Sds.Process do
   """
   defstruct registers: {0, 0, 0, 0, 0},
             map: {},
-            memory: [],
+            account: "@7hb",
+            name: "",
             state: nil,
             i_count: 0,
+            p_count: 0,
+            sp_count: 0,
             r_count: 0,
             w_count: 0
 
   @n_virtual_pages 8
 
-  def setup(%__MODULE__{} = p, memory, map, pc, a, b, x, ovf \\ 0)
-      when is_tuple(map) and tuple_size(map) == @n_virtual_pages and is_list(memory) and
-             length(memory) >= 1 do
+  @doc """
+  set up registers; memory is set up when process is added to the machine
+  """
+  def setup(%__MODULE__{} = p, pc, a, b, x, ovf \\ 0)
+      when is_tuple(map) and tuple_size(map) == @n_virtual_pages and is_list(memory) do
     new_registers = registers(a, b, x, pc, ovf)
-    %{p | registers: new_registers, memory: memory, map: map}
+    %{p | registers: new_registers}
   end
 
   @doc """
@@ -36,9 +41,14 @@ defmodule Sds.Process do
   end
 
   @doc """
-  get the memory map and memory content
+  get the memory map
   """
-  def get_memory_info(%__MODULE__{map: map, memory: memory} = _process), do: {memory, map}
+  def get_map(%__MODULE__{map: map} = _process), do: map
+
+  @doc """
+  set the memory map
+  """
+  def set_map(%__MODULE__{} - p, n_map), do: %{p | map: n_map}
 
   defp registers(a, b, x, pc, ovf \\ 0), do: {a, b, x, pc, ovf}
 
