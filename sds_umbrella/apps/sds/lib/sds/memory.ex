@@ -18,11 +18,16 @@ defmodule Sds.Memory do
   @n_pages 32
   @n_virtual_pages 8
   @page_size 2048
+  @max_virtual_address 16383
 
   @doc """
   return the memory size in words
   """
-  def get_memory_size(), do: @n_pages * @page_size
+  def get_memory_size, do: @n_pages * @page_size
+
+  def get_max_virtual_page, do: @n_virtual_pages - 1
+
+  def get_max_actual_page, do: @n_pages - 1
 
   @doc """
   read a value given absolute addressing of the @n_pages memory. Keep track of # of reads.
@@ -68,9 +73,19 @@ defmodule Sds.Memory do
     write(mem, absolute_address, content)
   end
 
+  def set_up(%__MODULE__{pmem: pmem} = mem, map, content) when is_list(content) do
+    #
+    n_pmem = Enum.reduce(content, pmem, fn {a,c}, m -> Map.put(m, get_absolute_address(map, a), c) end)
+  end
+
   @doc """
-  translate a mapped virtual address into an absolute address
+  get the virtual page index (0..7) of the virtual address
   """
+  def page_of(a) when is_integer(a) and a >= 0 and a <= @max_virtual_address, do: div(a, @page_size)
+
+  #@doc """
+  #translate a mapped virtual address into an absolute address
+  #"""
   defp get_absolute_address(v_address, map)
        when is_integer(v_address) and v_address >= 0 and v_address < @n_virtual_pages * @page_size and
               is_tuple(map) and tuple_size(map) == @n_virtual_pages do
