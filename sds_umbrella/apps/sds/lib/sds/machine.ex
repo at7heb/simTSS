@@ -25,7 +25,11 @@ defmodule Sds.Machine do
             this_id: 1
 
   def new do
-    n_page_allocation = Enum.reduce(0..Memory.get_max_actual_page, %{}, fn ndx, pa_map -> Map.put(pa_map, ndx, nil) end)
+    n_page_allocation =
+      Enum.reduce(0..Memory.get_max_actual_page(), %{}, fn ndx, pa_map ->
+        Map.put(pa_map, ndx, nil)
+      end)
+
     %{%__MODULE__{} | page_allocation: n_page_allocation}
   end
 
@@ -34,17 +38,22 @@ defmodule Sds.Machine do
   end
 
   defp queue_new_process(%__MODULE__{} = mach, %Process{} = p) do
-    %{mach | processes: Map.put(mach.processes, mach.this_id, p), run_queue: :queue.in(mach.run_queue, p)}
+    %{
+      mach
+      | processes: Map.put(mach.processes, mach.this_id, p),
+        run_queue: :queue.in(mach.run_queue, p)
+    }
   end
 
   defp update_this_id(%__MODULE__{} = mach), do: %{mach | this_id: mach.this_id + 1}
 
   defp update_memory(%__MODULE{} = mach, content) when is_list(content) do
     used_page_indices =
-      Enum.reduce(content, fn {a,_} -> Memory.page_of(a) end)
+      Enum.reduce(content, fn {a, _} -> Memory.page_of(a) end)
       |> Enum.uniq()
-    n_m = Enum.reduce(0..Memory.get_max_virtual_page-1, mach)
 
-    {m, {0, 0, 0, 0, 0, 0, 0, 0}}
+    n_m = Enum.reduce(0..(Memory.get_max_virtual_page() - 1), mach)
+
+    {:ok, {0, 0, 0, 0, 0, 0, 0, 0}}
   end
 end

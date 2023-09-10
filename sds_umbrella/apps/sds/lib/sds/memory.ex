@@ -75,17 +75,19 @@ defmodule Sds.Memory do
 
   def set_up(%__MODULE__{pmem: pmem} = mem, map, content) when is_list(content) do
     #
-    n_pmem = Enum.reduce(content, pmem, fn {a,c}, m -> Map.put(m, get_absolute_address(map, a), c) end)
+    n_pmem =
+      Enum.reduce(content, pmem, fn {a, c}, m -> Map.put(m, get_absolute_address(map, a), c) end)
   end
 
   @doc """
   get the virtual page index (0..7) of the virtual address
   """
-  def page_of(a) when is_integer(a) and a >= 0 and a <= @max_virtual_address, do: div(a, @page_size)
+  def page_of(a) when is_integer(a) and a >= 0 and a <= @max_virtual_address,
+    do: div(a, @page_size)
 
-  #@doc """
-  #translate a mapped virtual address into an absolute address
-  #"""
+  # @doc """
+  # translate a mapped virtual address into an absolute address
+  # """
   defp get_absolute_address(v_address, map)
        when is_integer(v_address) and v_address >= 0 and v_address < @n_virtual_pages * @page_size and
               is_tuple(map) and tuple_size(map) == @n_virtual_pages do
