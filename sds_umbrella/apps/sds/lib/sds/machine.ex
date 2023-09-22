@@ -34,7 +34,7 @@ defmodule Sds.Machine do
   end
 
   def add_process(%__MODULE__{} = mach, %Process{} = p, %Memory{} = mem) do
-    mach |> queue_new_process(p) |> update_memory(mem) |> update_this_id()
+    mach |> queue_new_process(p) |> update_memory(mem) |> update_this_id() |> dbg()
   end
 
   defp queue_new_process(%__MODULE__{} = mach, %Process{} = p) do
@@ -47,15 +47,15 @@ defmodule Sds.Machine do
 
   defp update_this_id(%__MODULE__{} = mach), do: %{mach | this_id: mach.this_id + 1}
 
-  defp update_memory(%__MODULE{} = mach, content) when is_list(content) do
+  defp update_memory(%__MODULE{} = mach, %Memory{} = content) do
     used_page_indices =
-      Enum.reduce(content, fn {a, _} -> Memory.page_of(a) end)
+      Enum.map(content, fn {a, _} -> Memory.page_of(a) end)
       |> Enum.uniq()
     unallocated_pages = get_unallocated_pages(mach.page_allocation)
     # unallocated_pages are the virtual pages that are not allocated yet.
     new_page_allocation = Enum.reduce(unallocated_pages, mach.page_allocation, fn virtual_page, page_alloc -> allocate_page(virtual_page, page_alloc, mach.this_id) end)
     # new_page_allocation is
-    this_process_page_allocation = Enum.filter(0..Memory.get_max_actual_page(), fn pg -> Map.get(new_page_allocation, pg) == {mach.this_id, _} end)
+    this_process_page_allocation = Enum.filter(0..Memory.get_max_actual_page(), fn pg -> elem(Map.get(new_page_allocation, pg), 0) == mach.this_id end)
     # this is a list of the actual page numbers. need to make list of {virtual, actual} tuples and update the processes's map
     va_list = Enum.map(this_process_page_allocation, fn ndx -> {elem(Map.get(new_page_allocation, ndx), 1), ndx} end)
     new_process_map = Enum.reduce(va_list, Map.get(mach.processes, mach.this_id),
@@ -67,6 +67,10 @@ defmodule Sds.Machine do
   end
 
   defp get_unallocated_pages(page_allocation) do
+    Enum.filter(0..Memory.get_max_actual_page(), fn page_number -> Map.get(page_allocation, page_number) == nil end)
+  end
+
+  defp allocate_page(virtual_page, page_alloc, this_process_id) do
 
   end
 end
