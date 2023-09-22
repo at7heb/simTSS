@@ -65,4 +65,8 @@ defmodule Sds.Machine do
     new_processes = Map.put(mach.processes, mach.this_id, new_process)
     %{mach | processes: new_processes, page_allocation: new_page_allocation}
   end
+
+  defp get_unallocated_pages(page_allocation) do
+
+  end
 end
