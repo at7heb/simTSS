@@ -41,7 +41,7 @@ defmodule Sds.Machine do
     %{
       mach
       | processes: Map.put(mach.processes, mach.this_id, p),
-        run_queue: :queue.in(mach.run_queue, p)
+        run_queue: :queue.in(mach.run_queue, mach.this_id)
     }
   end
 
@@ -51,9 +51,18 @@ defmodule Sds.Machine do
     used_page_indices =
       Enum.reduce(content, fn {a, _} -> Memory.page_of(a) end)
       |> Enum.uniq()
-
-    n_m = Enum.reduce(0..(Memory.get_max_virtual_page() - 1), mach)
-
-    {:ok, {0, 0, 0, 0, 0, 0, 0, 0}}
+    unallocated_pages = get_unallocated_pages(mach.page_allocation)
+    # unallocated_pages are the virtual pages that are not allocated yet.
+    new_page_allocation = Enum.reduce(unallocated_pages, mach.page_allocation, fn virtual_page, page_alloc -> allocate_page(virtual_page, page_alloc, mach.this_id) end)
+    # new_page_allocation is
+    this_process_page_allocation = Enum.filter(0..Memory.get_max_actual_page(), fn pg -> Map.get(new_page_allocation, pg) == {mach.this_id, _} end)
+    # this is a list of the actual page numbers. need to make list of {virtual, actual} tuples and update the processes's map
+    va_list = Enum.map(this_process_page_allocation, fn ndx -> {elem(Map.get(new_page_allocation, ndx), 1), ndx} end)
+    new_process_map = Enum.reduce(va_list, Map.get(mach.processes, mach.this_id),
+      fn {virt, actual}, map -> put_elem(map, virt, actual)
+    end)
+    new_process = %{Map.get(mach.processes, mach.this_id) | map: new_process_map}
+    new_processes = Map.put(mach.processes, mach.this_id, new_process)
+    %{mach | processes: new_processes, page_allocation: new_page_allocation}
   end
 end
