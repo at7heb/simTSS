@@ -4,7 +4,7 @@ defmodule MachineTest do
   alias Sds.Memory
   alias Sds.Process
 
-    # doctest MachineTest
+  # doctest MachineTest
 
   test "initial machine" do
     m = Machine.new()

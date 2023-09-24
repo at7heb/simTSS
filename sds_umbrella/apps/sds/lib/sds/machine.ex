@@ -52,11 +52,14 @@ defmodule Sds.Machine do
 
   defp update_memory(%__MODULE{} = mach, content) when is_list(content) do
     # content is a list of {address, value} tuples
-    #TODO this actually should be a memory function, not in Machine module!
+    # TODO this actually should be a memory function, not in Machine module!
     used_page_indices =
-      Enum.map(content, fn {a, _} -> Memory.page_of(a) end)
-      |> Enum.uniq() |> dbg()
-    pages_to_allocate = Enum.filter(0..Memory.get_max_virtual_page(), fn pg -> pg not in used_page_indices end) |> dbg()
+      Enum.map(content, fn {a, _} -> Memory.page_of(a) end) |> Enum.uniq() |> dbg()
+
+    pages_to_allocate =
+      Enum.filter(0..Memory.get_max_virtual_page(), fn pg -> pg not in used_page_indices end)
+      |> dbg()
+
     new_mach = allocate_pages(mach, pages_to_allocate) |> set_memory(content) |> dbg()
 
     # new_process = %{Map.get(mach.processes, mach.this_id) | map: new_process_map} |> dbg
@@ -67,21 +70,39 @@ defmodule Sds.Machine do
   end
 
   defp allocate_pages(%__MODULE__{} = mach, pages_to_allocate) do
-    unallocated_pages = Enum.filter(Map.keys(mach.page_allocation), fn page_num -> Map.get(mach.page_allocation, page_num) == nil end)
+    unallocated_pages =
+      Enum.filter(Map.keys(mach.page_allocation), fn page_num ->
+        Map.get(mach.page_allocation, page_num) == nil
+      end)
+
     allocation_pairs = Enum.zip(unallocated_pages, pages_to_allocate)
+
     if length(allocation_pairs) != length(pages_to_allocate) do
-      raise("not enough memory") # This exception should not be caught; it should crash!
+      # This exception should not be caught; it should crash!
+      raise("not enough memory")
     end
-    new_machine_page_allocation = Enum.reduce(allocation_pairs, mach.page_allocation,
-      fn {p_page, _}, allocation_map -> Map.put(allocation_map, p_page, mach.this_id) end)
-    updated_process = Map.get(mach.processes, mach.this_id) |> Process.update_memory_map(allocation_pairs)
+
+    new_machine_page_allocation =
+      Enum.reduce(allocation_pairs, mach.page_allocation, fn {p_page, _}, allocation_map ->
+        Map.put(allocation_map, p_page, mach.this_id)
+      end)
+
+    updated_process =
+      Map.get(mach.processes, mach.this_id) |> Process.update_memory_map(allocation_pairs)
+
     new_processes = Map.put(mach.processes, mach.this_id, updated_process)
     %{mach | page_allocation: new_machine_page_allocation, processes: new_processes}
   end
 
   defp set_memory(%__MODULE__{} = mach, content) when is_list(content) and length(content) > 0 do
     map = Map.get(mach.processes, mach.this_id) |> Map.get(:map) |> dbg()
-    new_memory = Enum.reduce(content, mach.memory, fn {address, content}, mem -> Memory.write_mapped(mem, address, map, content) end) |> dbg()
+
+    new_memory =
+      Enum.reduce(content, mach.memory, fn {address, content}, mem ->
+        Memory.write_mapped(mem, address, map, content)
+      end)
+      |> dbg()
+
     %{mach | memory: new_memory}
   end
 end

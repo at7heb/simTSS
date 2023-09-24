@@ -72,6 +72,5 @@ defmodule MemoryTest do
   end
 
   test "set up" do
-
   end
 end

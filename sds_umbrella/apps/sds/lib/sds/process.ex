@@ -17,7 +17,7 @@ defmodule Sds.Process do
 
   # @n_virtual_pages 8
   @max_reg 16_777_215
-  @max_pc  16_383
+  @max_pc 16_383
 
   @doc """
   set up registers; memory is set up when process is added to the machine
@@ -78,11 +78,19 @@ defmodule Sds.Process do
     # allocation_pairs: [{physical page, process page}]
     # physical page is 0..31 for a 64K memory machine.
     # process page is 0..7 since process can only access 16K
-    reallocations = Enum.filter(allocation_pairs, fn {phys, proc} -> elem(process_map, proc) != phys end)
+    reallocations =
+      Enum.filter(allocation_pairs, fn {phys, proc} -> elem(process_map, proc) != phys end)
+
     if length(reallocations) != 0 do
       raise("memory reallocation not implemented")
     end
-    new_map = Enum.reduce(allocation_pairs, process_map, fn {phys, virt}, p_map -> put_elem(p_map, virt, phys) end) |> dbg()
+
+    new_map =
+      Enum.reduce(allocation_pairs, process_map, fn {phys, virt}, p_map ->
+        put_elem(p_map, virt, phys)
+      end)
+      |> dbg()
+
     %{proc | map: new_map}
   end
 
