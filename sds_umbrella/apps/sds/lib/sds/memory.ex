@@ -29,6 +29,8 @@ defmodule Sds.Memory do
 
   def get_max_actual_page, do: @n_pages - 1
 
+  def get_physical_memory(%__MODULE__{pmem: pmem}), do: pmem
+
   @doc """
   read a value given absolute addressing of the @n_pages memory. Keep track of # of reads.
   """
@@ -73,11 +75,13 @@ defmodule Sds.Memory do
     write(mem, absolute_address, content)
   end
 
-  def set_up(%__MODULE__{pmem: pmem} = mem, map, content) when is_list(content) do
-    #
-    n_pmem =
-      Enum.reduce(content, pmem, fn {a, c}, m -> Map.put(m, get_absolute_address(map, a), c) end)
-  end
+  # def set_up(%__MODULE__{pmem: pmem} = mem, proc_map, content) when is_list(content) do
+  #   # using process's map, proc_map, store the content, which is a list of {address, value} tuples
+  #   # proc_map is a tuple of 8 fields with physical page # of the virtual page
+  #   new_pmem =
+  #     Enum.reduce(content, pmem, fn {a, c}, m -> Map.put(m, get_absolute_address(map, a), c) end)
+  #   %{mem | pmem: new_pmem}
+  # end
 
   @doc """
   get the virtual page index (0..7) of the virtual address
