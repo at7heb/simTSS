@@ -57,7 +57,7 @@ defmodule Sds.Machine do
       Enum.map(content, fn {a, _} -> Memory.page_of(a) end) |> Enum.uniq() |> dbg()
 
     pages_to_allocate =
-      Enum.filter(0..Memory.get_max_virtual_page(), fn pg -> pg not in used_page_indices end)
+      Enum.filter(0..Memory.get_max_virtual_page(), fn pg -> pg in used_page_indices end)
       |> dbg()
 
     new_mach = allocate_pages(mach, pages_to_allocate) |> set_memory(content) |> dbg()

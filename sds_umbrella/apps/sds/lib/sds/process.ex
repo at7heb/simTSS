@@ -5,7 +5,7 @@ defmodule Sds.Process do
   but not crucial to execution.
   """
   defstruct registers: {0, 0, 0, 0, 0},
-            map: {:a, :a, :a, :a, :a, :a, :a, :a},
+            map: {nil, nil, nil, nil, nil, nil, nil, nil},
             account: "@7hb",
             name: "",
             state: nil,
@@ -78,8 +78,10 @@ defmodule Sds.Process do
     # allocation_pairs: [{physical page, process page}]
     # physical page is 0..31 for a 64K memory machine.
     # process page is 0..7 since process can only access 16K
+    dbg(process_map)
+    dbg(allocation_pairs)
     reallocations =
-      Enum.filter(allocation_pairs, fn {phys, proc} -> elem(process_map, proc) != phys end)
+      Enum.filter(allocation_pairs, fn {_phys, proc} -> elem(process_map, proc) != nil end)
 
     if length(reallocations) != 0 do
       raise("memory reallocation not implemented")
