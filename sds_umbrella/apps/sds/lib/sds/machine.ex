@@ -24,6 +24,8 @@ defmodule Sds.Machine do
             page_allocation: %{},
             this_id: 1
 
+  # @allowable_states [:idle, :run_state, :bynby_state]
+
   def new do
     n_page_allocation =
       Enum.reduce(0..Memory.get_max_actual_page(), %{}, fn ndx, pa_map ->
@@ -37,11 +39,42 @@ defmodule Sds.Machine do
     mach |> queue_new_process(p) |> update_memory(mem) |> update_this_id() |> dbg()
   end
 
+  def queue_process(%__MODULE__{} = mach, process_id, which_queue) when is_integer(process_id) and is_atom(which_queue) do
+    process = Map.get(mach.processes, process_id)
+    cond do
+      process == nil -> raise "unknown process #{process_id}"
+      :queue.member(process_id, mach.by_n_by_queue) -> raise "process already queued on by_n_by queue"
+      :queue.member(process_id, mach.run_queue) -> raise "process already queued on run queue"
+      which_queue == :run -> handle_process_queuing(mach, process_id, :run_queue, :run_state)
+      which_queue == :by_n_by -> handle_process_queuing(mach, process_id, :by_n_by_queue, :bynby_state)
+      true -> raise "unknown queue #{which_queue}"
+    end
+  end
+
+  def dequeue_process(%__MODULE__{} = mach, process_id, which_queue) when is_integer(process_id) and is_atom(which_queue) do
+    queue_key = cond do
+      which_queue == :run -> :run_queue
+      which_queue == :by_n_by -> :by_n_by_queue
+      true -> raise "dequeue from unknown queue: #{which_queue}"
+    end
+    new_process = %{Map.get(mach.processes, process_id) | state: :idle}
+    new_queue = :queue.delete(process_id, Map.get(mach, queue_key))
+    %{mach| processes: Map.put(mach.processes, process_id, new_process)}
+      |> Map.put(queue_key, new_queue)
+  end
+
+  defp handle_process_queuing(%__MODULE__{} = mach, process_id, queue_key, state) when is_integer(process_id) and is_atom(queue_key) and is_atom(state) do
+    the_queue = Map.get(mach, queue_key)
+    new_process = %{Map.get(mach.processes, process_id) | state: state}
+    new_processes = Map.put(mach.processes, process_id, new_process)
+    new_queue = :queue.in(process_id, the_queue)
+    Map.put(mach, queue_key, new_queue) |> Map.put(:processes, new_processes)
+  end
+
   defp queue_new_process(%__MODULE__{} = mach, %Process{} = p) do
     %{
       mach
-      | processes: Map.put(mach.processes, mach.this_id, p),
-        run_queue: :queue.in(mach.this_id, mach.run_queue)
+      | processes: Map.put(mach.processes, mach.this_id, p)
     }
   end
 

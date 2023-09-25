@@ -8,12 +8,12 @@ defmodule Sds.Process do
             map: {nil, nil, nil, nil, nil, nil, nil, nil},
             account: "@7hb",
             name: "",
-            state: nil,
-            i_count: 0,
-            p_count: 0,
-            sp_count: 0,
-            r_count: 0,
-            w_count: 0
+            state: nil, # :{run|bynby|dead}_state
+            i_count: 0, # instructions executed
+            p_count: 0, # pops executed
+            sp_count: 0, # syspops executed
+            r_count: 0, # memory reads
+            w_count: 0 # memory writes
 
   # @n_virtual_pages 8
   @max_reg 16_777_215
@@ -95,6 +95,15 @@ defmodule Sds.Process do
 
     %{proc | map: new_map}
   end
+
+  def set_state(%__MODULE__{} = p, state) when is_atom(state) do
+    if state not in [nil, :idle, :runnable] do
+      raise "process state #{state} unknown"
+    end
+    %{p | state: state}
+  end
+
+  def get_state(%__MODULE__{state: state} = _p), do: state
 
   defp registera({a, _, _, _, _} = _registers), do: a
   defp registerb({_, b, _, _, _} = _registers), do: b
