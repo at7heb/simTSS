@@ -8,7 +8,7 @@ defmodule Sds.Process do
             map: {nil, nil, nil, nil, nil, nil, nil, nil},
             account: "@7hb",
             name: "",
-            state: nil, # :{run|bynby|dead}_state
+            state: :idle, # :{run|bynby|dead}_state
             i_count: 0, # instructions executed
             p_count: 0, # pops executed
             sp_count: 0, # syspops executed
@@ -18,6 +18,9 @@ defmodule Sds.Process do
   # @n_virtual_pages 8
   @max_reg 16_777_215
   @max_pc 16_383
+
+    # @allowable_states [:idle, :run_state, :bynby_state]
+
 
   @doc """
   set up registers; memory is set up when process is added to the machine
@@ -78,8 +81,8 @@ defmodule Sds.Process do
     # allocation_pairs: [{physical page, process page}]
     # physical page is 0..31 for a 64K memory machine.
     # process page is 0..7 since process can only access 16K
-    dbg(process_map)
-    dbg(allocation_pairs)
+    # dbg(process_map)
+    # dbg(allocation_pairs)
     reallocations =
       Enum.filter(allocation_pairs, fn {_phys, proc} -> elem(process_map, proc) != nil end)
 
@@ -91,7 +94,7 @@ defmodule Sds.Process do
       Enum.reduce(allocation_pairs, process_map, fn {phys, virt}, p_map ->
         put_elem(p_map, virt, phys)
       end)
-      |> dbg()
+      # |> dbg()
 
     %{proc | map: new_map}
   end

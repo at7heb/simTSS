@@ -21,7 +21,7 @@ defmodule ProcessTest do
     assert p.i_count == 0
     assert p.r_count == 0
     assert p.w_count == 0
-    assert p.state == nil
+    assert p.state == :idle
   end
 
   test "setup process" do

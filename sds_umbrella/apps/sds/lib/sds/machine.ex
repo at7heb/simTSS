@@ -24,7 +24,6 @@ defmodule Sds.Machine do
             page_allocation: %{},
             this_id: 1
 
-  # @allowable_states [:idle, :run_state, :bynby_state]
 
   def new do
     n_page_allocation =
@@ -36,7 +35,7 @@ defmodule Sds.Machine do
   end
 
   def add_process(%__MODULE__{} = mach, %Process{} = p, mem) when is_list(mem) do
-    mach |> queue_new_process(p) |> update_memory(mem) |> update_this_id() |> dbg()
+    mach |> queue_new_process(p) |> update_memory(mem) |> update_this_id() # |> dbg()
   end
 
   def queue_process(%__MODULE__{} = mach, process_id, which_queue) when is_integer(process_id) and is_atom(which_queue) do
@@ -87,13 +86,13 @@ defmodule Sds.Machine do
     # content is a list of {address, value} tuples
     # TODO this actually should be a memory function, not in Machine module!
     used_page_indices =
-      Enum.map(content, fn {a, _} -> Memory.page_of(a) end) |> Enum.uniq() |> dbg()
+      Enum.map(content, fn {a, _} -> Memory.page_of(a) end) |> Enum.uniq() # |> dbg()
 
     pages_to_allocate =
       Enum.filter(0..Memory.get_max_virtual_page(), fn pg -> pg in used_page_indices end)
-      |> dbg()
+      # |> dbg()
 
-    new_mach = allocate_pages(mach, pages_to_allocate) |> set_memory(content) |> dbg()
+    new_mach = allocate_pages(mach, pages_to_allocate) |> set_memory(content) # |> dbg()
 
     # new_process = %{Map.get(mach.processes, mach.this_id) | map: new_process_map} |> dbg
     # new_processes = Map.put(mach.processes, mach.this_id, new_process) |> dbg
@@ -128,13 +127,13 @@ defmodule Sds.Machine do
   end
 
   defp set_memory(%__MODULE__{} = mach, content) when is_list(content) and length(content) > 0 do
-    map = Map.get(mach.processes, mach.this_id) |> Map.get(:map) |> dbg()
+    map = Map.get(mach.processes, mach.this_id) |> Map.get(:map) # |> dbg()
 
     new_memory =
       Enum.reduce(content, mach.memory, fn {address, content}, mem ->
         Memory.write_mapped(mem, address, map, content)
       end)
-      |> dbg()
+      # |> dbg()
 
     %{mach | memory: new_memory}
   end
