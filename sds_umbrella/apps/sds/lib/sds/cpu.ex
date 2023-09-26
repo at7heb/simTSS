@@ -56,6 +56,7 @@ defmodule Sds.Cpu do
         raise "no assigned memory at address #{pc}"
       end
       <<sys::1, indexed::1, pop::1, opcode::6, ind::1, address::14>> = <<instruction::24>>
+      # weird bug: why can't this be here & must be after this???????
       # {registers, memory, map, counts, _reason} = exec940(sys, indexed, pop, opcode, ind, address, counts, registers, mem, map)
       counts = (cond do
         (sys == 0 && pop == 0) -> %{counts | i_count: counts.i_count + 1}
