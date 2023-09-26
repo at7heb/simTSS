@@ -50,24 +50,21 @@ defmodule Sds.Cpu do
   end
 
   def run({_, _, _, pc, _} = registers, memory, map, counts, rc, :continue) do
-      {new_mem, instruction} = fetch_instruction(pc, memory, map)
+      {mem, instruction} = fetch_instruction(pc, memory, map)
       counts = %{counts | r_count: counts.r_count + 1}
       if instruction >= 2**24 do
         raise "no assigned memory at address #{pc}"
       end
       <<sys::1, indexed::1, pop::1, opcode::6, ind::1, address::14>> = <<instruction::24>>
-      {registers, memory, map, counts, reason} = execute(sys, indexed, pop, opcode, ind, address, counts, registers, new_mem, map)
-      norm =
+      # {registers, memory, map, counts, _reason} = exec940(sys, indexed, pop, opcode, ind, address, counts, registers, mem, map)
       counts = (cond do
-        #%{i_count: p.i_count, p_count: p.p_count, sp_count: p.sp_count, r_count: p.r_count, w_count: p.w_count}
-        # (!sys && !pop) -> %{counts | i_count: counts.i_count + 1}
-        # (sys && pop) -> %{counts | sp_count: counts.sp_count + 1}
-        # (!sys && pop) -> %{counts | p_count: counts.p_count + 1}
-        (!sys && !pop) -> 5
-        (sys && pop) -> 77
-        (!sys && pop) -> 9
-        true -> raise "instruction at #{pc}: #{instruction} is malformed"
+        (sys == 0 && pop == 0) -> %{counts | i_count: counts.i_count + 1}
+        (sys == 1 && pop == 1) -> %{counts | sp_count: counts.sp_count + 1}
+        (sys == 0 && pop == 1) -> %{counts | p_count: counts.p_count + 1}
+        true -> raise "malformed"
+        # true -> raise "instruction at #{pc}: #{instruction} is malformed"
       end)
+      {registers, memory, map, counts, _reason} = exec940(sys, indexed, pop, opcode, ind, address, counts, registers, mem, map)
       run(registers, memory, map, counts, rc - 1, :continue)
   end
 
@@ -78,7 +75,7 @@ defmodule Sds.Cpu do
     end
   end
 
-  def execute(0, x, 0, 0o76, ind, addr, counts, registers, memory, map) do
+  def exec940(0, x, 0, 0o76, ind, addr, counts, registers, memory, map) do
     {count, effective_address} = get_effective_address(x, ind, addr, registers, memory, map, @max_indirects)
     counts = %{counts | r_count: counts.r_count + count}
     {memory, word} = Memory.read_mapped(memory, effective_address, map)
