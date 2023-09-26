@@ -15,9 +15,9 @@ defmodule Sds.Machine do
 
   defstruct processes: %{},
             memory: %Memory{},
-            i_count: 0,
-            p_count: 0,
-            sp_count: 0,
+            i_count: 0, # count of executed instructions
+            p_count: 0, # count of exectued pops
+            sp_count: 0, # count of executed syspops
             run_queue: :queue.new(),
             by_n_by_queue: :queue.new(),
             io_queue: :queue.new(),

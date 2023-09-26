@@ -8,6 +8,7 @@ defmodule Sds.Process do
             map: {nil, nil, nil, nil, nil, nil, nil, nil},
             account: "@7hb",
             name: "",
+            id: -1,
             state: :idle, # :{run|bynby|dead}_state
             i_count: 0, # instructions executed
             p_count: 0, # pops executed
@@ -54,6 +55,19 @@ defmodule Sds.Process do
   """
   def set_map(%__MODULE__{} = p, n_map), do: %{p | map: n_map}
 
+  def get_id(%__MODULE__{id: id} = _process), do: id
+  def set_id(%__MODULE__{id: -1} = p, id) do
+    %{p | id: id}
+  end
+  def set_id(%__MODULE__{} = _p, _id), do: raise "setting process ID a second time"
+
+  def get_counts(%__MODULE__{} = p) do
+    %{i_count: p.i_count, p_count: p.p_count, sp_count: p.sp_count, r_count: p.r_count, w_count: p.w_count}
+  end
+
+  def set_counts(%__MODULE__{} = p, i_count, p_count, sp_count, r_count, w_count) do
+    %{p| i_count: i_count, p_count: p_count, sp_count: sp_count, r_count: r_count, w_count: w_count}
+  end
   @doc """
   registers must be in range 0 <= register < max
   max is 2^24 for a, b, x
@@ -62,6 +76,9 @@ defmodule Sds.Process do
 
   The guards are applied one at a time. This might be ugly!??!
   """
+
+  def get_registers(%__MODULE__{registers: registers} = _p), do: registers
+
   def registers(a, b, x, pc, ovf \\ 0) when is_integer(a) and a >= 0 and a <= @max_reg,
     do: registers1(a, b, x, pc, ovf)
 
