@@ -23,6 +23,8 @@ defmodule Sds.Cpu do
 
   @max_indirects 10 # 10 equals infinity!
   @word_mask 0o77777777
+  @sign_mask 0o40000000
+  @valu_mask 0o37777777
   @addr_mask 0o37777
 
 
@@ -76,14 +78,73 @@ defmodule Sds.Cpu do
     end
   end
 
+
+  # LDA
   def exec940(0, x, 0, 0o76, ind, addr, counts, registers, memory, map) do
-    {count, effective_address} = get_effective_address(x, ind, addr, registers, memory, map, @max_indirects)
-    counts = %{counts | r_count: counts.r_count + count}
-    {memory, word} = Memory.read_mapped(memory, effective_address, map)
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
     if word >= 2**24 do
       raise "read unassigned memory at #{reg_pc(registers)}"
     end
     registers = set_reg_a(registers, word)
+    {registers, memory, map, counts, :continue}
+  end
+
+  # LDB
+  def exec940(0, x, 0, 0o75, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+    if word >= 2**24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+    registers = set_reg_b(registers, word)
+    {registers, memory, map, counts, :continue}
+  end
+
+  # LDX
+  def exec940(0, x, 0, 0o71, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+    if word >= 2**24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+    registers = set_reg_x(registers, word)
+    {registers, memory, map, counts, :continue}
+  end
+
+  # BRU
+  def exec940(0, x, 0, 0o01, ind, addr, counts, registers, memory, map) do
+    {count, effective_address} = get_effective_address(x, ind, addr, registers, memory, map, @max_indirects)
+    counts = %{counts | r_count: counts.r_count + count}
+    registers = set_reg_pc(registers, effective_address)
+    {registers, memory, map, counts, :continue}
+  end
+
+  # ADD
+  def exec940(0, x, 0, 0o55, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+    if word >= 2**24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+    old_a = reg_a(registers)
+    {new_a, new_x, new_ovf} = add(reg_a(registers), word, 0, reg_x(registers), reg_ovf(registers))
+    registers = set_reg_a(registers, new_a) |> set_reg_x(new_x) |> set_reg_ovf(new_ovf)
+    {registers, memory, map, counts, :continue}
+  end
+
+
+  def load_memory(x, ind, addr, counts, registers, memory, map) do
+    {count, effective_address} = get_effective_address(x, ind, addr, registers, memory, map, @max_indirects)
+    counts = %{counts | r_count: counts.r_count + count}
+    {memory, word} = Memory.read_mapped(memory, effective_address, map)
+    {memory, word, counts}
+  end
+
+  def add(a1, a2, carry, x, ovf) when a1 <= @word_mask and a2 <= @word_mask and carry <= 1 and x <= @word_mask do
+    a3 = a1 + a2 + carry
+    x_carry = ((a3 &&& (1 + @word_mask)) >>> 1) &&& @sign_mask
+    new_x = (x &&& @valu_mask) ||| x_carry
+    ov1 = bxor(bxor(a1, a2) >>> 23, 1)
+    ov2 = bxor(a1, a3) >>> 23
+    new_ovf = if (ov1 &&& ov2) != 0 do 1 else ovf end
+    {a3 &&& @word_mask, new_x, new_ovf}
   end
 
   def get_effective_address(x, ind, addr, registers, _memory, _map, 0), do: raise "indirect loop #{x} #{ind} #{addr} #{registers}"
