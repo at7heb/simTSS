@@ -32,17 +32,22 @@ defmodule MachineTest do
     process2 = Process.setup(%Process{}, 0, 0, 0, 0)
     mem = [{0o200, 0o020_00000}, {0o201, 0o076_00210}, {0o202, 0}, {0o210, 0o76543210}]
     mach = Machine.new()
-    mach1 = Machine.add_process(mach, process1, mem)
-            |> Machine.add_process(process2, mem)
-            |> Machine.queue_process(1, :run)
-            |> Machine.queue_process(2, :by_n_by)
+
+    mach1 =
+      Machine.add_process(mach, process1, mem)
+      |> Machine.add_process(process2, mem)
+      |> Machine.queue_process(1, :run)
+      |> Machine.queue_process(2, :by_n_by)
+
     assert is_struct(mach1, Machine)
     refute :queue.is_empty(mach1.run_queue)
     refute :queue.is_empty(mach1.by_n_by_queue)
 
-    mach2 = Machine.dequeue_process(mach1, 1, :run)
-            |> Machine.dequeue_process(2, :by_n_by)
+    mach2 =
+      Machine.dequeue_process(mach1, 1, :run)
+      |> Machine.dequeue_process(2, :by_n_by)
+
     assert :queue.is_empty(mach2.run_queue)
     assert :queue.is_empty(mach2.by_n_by_queue)
-          end
+  end
 end
