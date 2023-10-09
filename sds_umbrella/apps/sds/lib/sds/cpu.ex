@@ -32,6 +32,7 @@ defmodule Sds.Cpu do
   @word_mask 0o77777777
   @sign_mask 0o40000000
   @valu_mask 0o37777777
+  @carry_mask 0o100000000
   @addr_mask 0o37777
   @expn_mask 0o777
   @expn_sign 0o400
@@ -242,6 +243,83 @@ defmodule Sds.Cpu do
     {pc_next(registers), memory, map, counts, :continue}
   end
 
+  # ADC
+  def exec940(0, x, 0, 0o57, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if word >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    {new_a, new_x, new_ovf} =
+      add(reg_a(registers), word, reg_x(registers) >>> 23 &&& 1, reg_x(registers), 0)
+
+    registers = set_reg_a(registers, new_a) |> set_reg_x(new_x) |> set_reg_ovf(new_ovf)
+    {pc_next(registers), memory, map, counts, :continue}
+  end
+
+  # ADM
+  def exec940(0, x, 0, 0o63, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if word >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    {sum, ovf} = add_simple(reg_a(registers), word, reg_ovf(registers))
+    {memory, counts} = store_memory(x, ind, addr, counts, sum, reg_x(registers), memory, map)
+    {set_reg_ovf(registers, ovf) |> pc_next(), memory, map, counts, :continue}
+  end
+
+  # MIN
+  def exec940(0, x, 0, 0o61, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if word >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    {sum, ovf} = add_simple(1, word, reg_ovf(registers))
+    {memory, counts} = store_memory(x, ind, addr, counts, sum, reg_x(registers), memory, map)
+    {set_reg_ovf(registers, ovf) |> pc_next(), memory, map, counts, :continue}
+  end
+
+  # SUB
+  def exec940(0, x, 0, 0o54, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if word >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    {new_a, new_x, new_ovf} =
+      add(reg_a(registers), bxor(word, @word_mask), 1, reg_x(registers), reg_ovf(registers))
+
+    registers = set_reg_a(registers, new_a) |> set_reg_x(new_x) |> set_reg_ovf(new_ovf)
+    {pc_next(registers), memory, map, counts, :continue}
+  end
+
+  # SUC
+  def exec940(0, x, 0, 0o56, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if word >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    {new_a, new_x, new_ovf} =
+      add(
+        reg_a(registers),
+        bxor(word, @word_mask),
+        reg_x(registers) >>> 23 &&& 1,
+        reg_x(registers),
+        0
+      )
+
+    registers = set_reg_a(registers, new_a) |> set_reg_x(new_x) |> set_reg_ovf(new_ovf)
+    {pc_next(registers), memory, map, counts, :continue}
+  end
+
   # NOP
   def exec940(0, _, 0, 0o20, _, _, counts, registers, memory, map) do
     {pc_next(registers), memory, map, counts, :continue}
@@ -375,19 +453,36 @@ defmodule Sds.Cpu do
   def add(a1, a2, carry, x, ovf)
       when a1 <= @word_mask and a2 <= @word_mask and carry <= 1 and x <= @word_mask do
     a3 = a1 + a2 + carry
-    x_carry = (a3 &&& 1 + @word_mask) >>> 1 &&& @sign_mask
-    new_x = (x &&& @valu_mask) ||| x_carry
-    ov1 = bxor(bxor(a1, a2) >>> 23, 1)
-    ov2 = bxor(a1, a3) >>> 23
+    carry = (a3 &&& @carry_mask) >>> 24
 
-    new_ovf =
-      if (ov1 &&& ov2) != 0 do
-        1
+    new_x =
+      if carry == 1 do
+        x ||| @sign_mask
       else
-        ovf
+        x &&& @valu_mask
       end
 
+    new_ovf = ovf_from_add(a1, a2, a3, ovf)
+
     {a3 &&& @word_mask, new_x, new_ovf}
+  end
+
+  #     {sum, ovf} = add_simple(reg_a(registers), word, reg_ovf(registers))
+  def add_simple(v1, v2, ovf) do
+    sum = v1 + v2 &&& @word_mask
+    ovf = ovf_from_add(v1, v2, sum, ovf)
+    {sum, ovf}
+  end
+
+  def ovf_from_add(a1, a2, sum, ovf) do
+    ov1 = bxor(bxor(a1, a2) >>> 23, 1)
+    ov2 = bxor(a1, sum) >>> 23
+
+    if (ov1 &&& ov2) != 0 do
+      1
+    else
+      ovf
+    end
   end
 
   def get_effective_address(x, ind, addr, x_reg, _memory, _map, ct) when ct <= 0,
