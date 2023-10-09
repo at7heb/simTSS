@@ -198,14 +198,35 @@ defmodule Sds.Cpu do
     {pc_next(registers), memory, map, counts, :continue}
   end
 
+  # EAX
+  def exec940(0, x, 0, 0o77, ind, addr, counts, registers, memory, map) do
+    # {memory, counts} =
+    #   store_memory(x, ind, addr, counts, reg_x(registers), reg_x(registers), memory, map)
+    {count, effective_address} =
+      get_effective_address(x, ind, addr, reg_x(registers), memory, map, @max_indirects)
+
+    counts = %{counts | r_count: counts.r_count + count + 1}
+    {set_reg_x(registers, effective_address) |> pc_next(), memory, map, counts, :continue}
+  end
+
+  # XMA
+  def exec940(0, x, 0, 0o62, ind, addr, counts, registers, memory, map) do
+    {memory, word, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    {memory, counts} =
+      store_memory(x, ind, addr, counts, reg_a(registers), reg_x(registers), memory, map)
+
+    {set_reg_a(registers, word) |> pc_next(), memory, map, counts, :continue}
+  end
+
   # BRU
   def exec940(0, x, 0, 0o01, ind, addr, counts, registers, memory, map) do
     {count, effective_address} =
-      get_effective_address(x, ind, addr, registers, memory, map, @max_indirects)
+      get_effective_address(x, ind, addr, reg_x(registers), memory, map, @max_indirects)
 
     counts = %{counts | r_count: counts.r_count + count}
     registers = set_reg_pc(registers, effective_address)
-    {pc_next(registers), memory, map, counts, :continue}
+    {registers, memory, map, counts, :continue}
   end
 
   # ADD
@@ -331,7 +352,9 @@ defmodule Sds.Cpu do
     {count, effective_address} =
       get_effective_address(x, ind, addr, x_reg, memory, map, @max_indirects)
 
-    counts = %{counts | r_count: counts.r_count + count}
+    # count = reads of memory due to indirection
+
+    counts = %{counts | r_count: counts.r_count + count + 1}
     {memory, word} = Memory.read_mapped(memory, effective_address, map)
     {memory, word, counts}
   end
@@ -340,7 +363,9 @@ defmodule Sds.Cpu do
     {count, effective_address} =
       get_effective_address(x, ind, addr, x_reg, memory, map, @max_indirects)
 
-    counts = %{counts | w_count: counts.w_count + count}
+    # count = reads of memory due to indirection
+
+    counts = %{counts | w_count: counts.w_count + 1, r_count: counts.r_count + count}
     # {memory, word} = Memory.read_mapped(memory, effective_address, map)
     {effective_address, value} |> dbg
     new_memory = Memory.write_mapped(memory, effective_address, map, value)
@@ -372,16 +397,16 @@ defmodule Sds.Cpu do
     do: {@max_indirects - ct, addr}
 
   def get_effective_address(1 = _x, 0 = _ind, addr, x_reg, _memory, _map, ct),
-    do: {@max_indirects - ct, addr + (x_reg &&& 0o37777)}
+    do: {@max_indirects - ct, addr + (x_reg &&& @addr_mask)}
 
   def get_effective_address(x, 1 = _ind, addr, x_reg, memory, map, ct) do
     x_value =
       case x do
         0 -> 0
-        1 -> x_reg &&& 0o37777
+        1 -> x_reg &&& @addr_mask
       end
 
-    {new_memory, word} = Memory.read_mapped(memory, addr + x_value &&& 0o37777, map)
+    {new_memory, word} = Memory.read_mapped(memory, addr + x_value &&& @addr_mask, map)
     <<_::1, x::1, _::7, ind::1, address::14>> = <<word::24>>
     get_effective_address(x, ind, address, x_reg, new_memory, map, ct - 1)
   end
