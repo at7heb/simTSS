@@ -17,13 +17,14 @@ defmodule Sds.Machine do
             memory: %Memory{},
             # count of executed instructions
             i_count: 0,
-            # count of exectued pops
+            # count of executed pops
             p_count: 0,
             # count of executed syspops
             sp_count: 0,
             run_queue: :queue.new(),
             by_n_by_queue: :queue.new(),
             io_queue: :queue.new(),
+            idle_queue: :queue.new(),
             page_allocation: %{},
             this_id: 1
 
@@ -94,7 +95,8 @@ defmodule Sds.Machine do
   defp queue_new_process(%__MODULE__{} = mach, %Process{} = p) do
     %{
       mach
-      | processes: Map.put(mach.processes, mach.this_id, p)
+      | processes: Map.put(mach.processes, mach.this_id, p),
+      idle_queue: :queue.in(mach.this_id, mach.idle_queue)
     }
   end
 
