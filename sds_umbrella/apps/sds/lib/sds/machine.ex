@@ -96,7 +96,7 @@ defmodule Sds.Machine do
     %{
       mach
       | processes: Map.put(mach.processes, mach.this_id, p),
-      idle_queue: :queue.in(mach.this_id, mach.idle_queue)
+        idle_queue: :queue.in(mach.this_id, mach.idle_queue)
     }
   end
 

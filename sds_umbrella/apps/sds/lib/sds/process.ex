@@ -150,9 +150,10 @@ defmodule Sds.Process do
 
   def get_state(%__MODULE__{state: state} = _p), do: state
 
-  def set_registers(%__MODULE__{} = p, {a, b, x, pc, ovf} = registers) when a >= 0 and a <= @max_reg  and b >= 0 and b <= @max_reg
-  and x >= 0 and x <= @max_reg and pc >= 0 and pc <= @max_pc and ovf >= 0 and ovf <= 1 do
-    %{p| registers: registers}
+  def set_registers(%__MODULE__{} = p, {a, b, x, pc, ovf} = registers)
+      when a >= 0 and a <= @max_reg and b >= 0 and b <= @max_reg and
+             x >= 0 and x <= @max_reg and pc >= 0 and pc <= @max_pc and ovf >= 0 and ovf <= 1 do
+    %{p | registers: registers}
   end
 
   defp registera({a, _, _, _, _} = _registers), do: a

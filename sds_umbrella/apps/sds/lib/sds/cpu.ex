@@ -56,16 +56,24 @@ defmodule Sds.Cpu do
     {status, new_registers, new_memory, new_map, new_counts} =
       run(registers, memory, map, counts, rc, :continue)
 
-    new_process = Process.set_registers(c.process, new_registers)
-    |> Process.set_counts(new_counts.i_count, new_counts.p_count, new_counts.sp_count, new_counts.r_count, new_counts.w_count)
-    |> Process.set_map(new_map)
+    new_process =
+      Process.set_registers(c.process, new_registers)
+      |> Process.set_counts(
+        new_counts.i_count,
+        new_counts.p_count,
+        new_counts.sp_count,
+        new_counts.r_count,
+        new_counts.w_count
+      )
+      |> Process.set_map(new_map)
 
-    process_status = case status do
-      :quantum_expired -> :continue
-      :allocate_page -> :more_memory
-      :illegal_status -> :kill_process
-      :halt -> :make_zombie
-    end
+    process_status =
+      case status do
+        :quantum_expired -> :continue
+        :allocate_page -> :more_memory
+        :illegal_status -> :kill_process
+        :halt -> :make_zombie
+      end
 
     # %{c | process: new_process}
     # %{c | memory: new_memory}
@@ -81,10 +89,13 @@ defmodule Sds.Cpu do
     {:quantum_expired, registers, memory, map, counts}
   end
 
-  def run({_, _, _, pc, _} = registers, memory, map, counts, rc, :continue) when pc >= 0 and pc <= @addr_mask do
-    {pc, rc} |> dbg
+  def run({_, _, _, pc, _} = registers, memory, map, counts, rc, :continue)
+      when pc >= 0 and pc <= @addr_mask do
+    # |> dbg
+    {pc, rc}
     {mem, instruction} = fetch_instruction(pc, memory, map) |> dbg
-    counts = %{counts | r_count: counts.r_count + 1} |> dbg
+    # |> dbg
+    counts = %{counts | r_count: counts.r_count + 1}
     registers |> dbg
 
     if instruction >= 2 ** 24 do
@@ -112,6 +123,7 @@ defmodule Sds.Cpu do
 
     {registers, memory, map, counts, reason} =
       exec940(sys, indexed, pop, opcode, ind, address, counts, registers, mem, map)
+
     run(registers, memory, map, counts, rc - 1, reason)
   end
 
@@ -122,6 +134,7 @@ defmodule Sds.Cpu do
         :halt -> :halt
         _ -> :illegal_status
       end
+
     {status, registers, memory, map, counts}
   end
 
@@ -161,6 +174,30 @@ defmodule Sds.Cpu do
     {pc_next(registers), memory, map, counts, :continue}
   end
 
+  # STA
+  def exec940(0, x, 0, 0o35, ind, addr, counts, registers, memory, map) do
+    {memory, counts} =
+      store_memory(x, ind, addr, counts, reg_a(registers), reg_x(registers), memory, map)
+
+    {pc_next(registers), memory, map, counts, :continue}
+  end
+
+  # STB
+  def exec940(0, x, 0, 0o36, ind, addr, counts, registers, memory, map) do
+    {memory, counts} =
+      store_memory(x, ind, addr, counts, reg_b(registers), reg_x(registers), memory, map)
+
+    {pc_next(registers), memory, map, counts, :continue}
+  end
+
+  # STX
+  def exec940(0, x, 0, 0o37, ind, addr, counts, registers, memory, map) do
+    {memory, counts} =
+      store_memory(x, ind, addr, counts, reg_x(registers), reg_x(registers), memory, map)
+
+    {pc_next(registers), memory, map, counts, :continue}
+  end
+
   # BRU
   def exec940(0, x, 0, 0o01, ind, addr, counts, registers, memory, map) do
     {count, effective_address} =
@@ -190,54 +227,99 @@ defmodule Sds.Cpu do
   end
 
   # register change
-    # O 46 00001    # Clear A
-    # O 46 00002    # Clear B
-    # O 46 00003    # Clear AB
-    # 2 46 00000    # Clear X
-    # 2 46 00003    # Clear A, B and X
-    # o 46 oooo4    Copy A into B
-    # 0 46 00010    Copy B into A
-    # 0 46 00014    Exchange A into B
-    # 0 46 00012    Copy B into A, Clearing B
-    # o 46 00005    Copy A into B, Clearing A
-    # O 46 00200    Copy X into A
-    # o 46 oo4oo    Copy A into X
-    # o 46 oo6oo    Exchange X and A
-    # O 46 00020    Copy B into X
-    # o 46 ooo4o    Copy X into B
-    # 0 46 00060    Exchange X and B
-    # 0 46 00122    Store Exponent
-    # o 46 00140    Load Exponent
-    # o 46 00160    Exchange Exponents
-    # 0 46 01000    Copy negative into A
-    # 0 46 Oo401    Copy A to X, clear A
-    # REGISTER CHANGE
+  # O 46 00001    # Clear A
+  # O 46 00002    # Clear B
+  # O 46 00003    # Clear AB
+  # 2 46 00000    # Clear X
+  # 2 46 00003    # Clear A, B and X
+  # o 46 oooo4    Copy A into B
+  # 0 46 00010    Copy B into A
+  # 0 46 00014    Exchange A into B
+  # 0 46 00012    Copy B into A, Clearing B
+  # o 46 00005    Copy A into B, Clearing A
+  # O 46 00200    Copy X into A
+  # o 46 oo4oo    Copy A into X
+  # o 46 oo6oo    Exchange X and A
+  # O 46 00020    Copy B into X
+  # o 46 ooo4o    Copy X into B
+  # 0 46 00060    Exchange X and B
+  # 0 46 00122    Store Exponent
+  # o 46 00140    Load Exponent
+  # o 46 00160    Exchange Exponents
+  # 0 46 01000    Copy negative into A
+  # 0 46 Oo401    Copy A to X, clear A
+  # REGISTER CHANGE
   def exec940(0, x, 0, 0o46, 0 = _ind, addr, counts, registers, memory, map) do
     {a0, b0, x0, _, _} = registers
-    {a1, b1, x1} = case {x, addr} do
-      {0, 0o0001} -> {0, b0, x0}
-      {0, 0o0002} -> {a0, 0, x0}
-      {0, 0o0003} -> {0, 0, x0}
-      {1, 0o0000} -> {a0, b0, 0}
-      {1, 0o0003} -> {0, 0, 0}
-      {0, 0o0004} -> {a0, a0, x0}
-      {0, 0o0010} -> {b0, b0, x0}
-      {0, 0o0014} -> {b0, a0, x0}
-      {0, 0o0012} -> {b0, 0, x0}
-      {0, 0o0005} -> {0, a0, x0}
-      {0, 0o0200} -> {x0, b0, x0}
-      {0, 0o0400} -> {a0, b0, a0}
-      {0, 0o0600} -> {x0, b0, a0}
-      {0, 0o0020} -> {a0, b0, b0}
-      {0, 0o0040} -> {a0, x0, x0}
-      {0, 0o0060} -> {a0, x0, b0}
-      {0, 0o0122} -> {a0, b0, sign_extended_exponent(b0)}
-      {0, 0o0140} -> {a0, (b0 &&& @expn_cmpl) ||| (x0 &&& @expn_mask), x0}
-      {0, 0o0160} -> {a0, b0 &&& @expn_cmpl ||| (x0 &&& @expn_mask), sign_extended_exponent(b0)}
-      {0, 0o1000} -> {(bxor(a0, @word_mask) + 1 ) &&& @word_mask, b0, x0}
-      {0, 0o0401} -> {0, b0, a0}
-    end
-    {(registers |> set_reg_a(a1) |> set_reg_b(b1) |> set_reg_x(x1) |> pc_next()), memory, map, counts, :continue}
+
+    {a1, b1, x1} =
+      case {x, addr} do
+        {0, 0o0001} ->
+          {0, b0, x0}
+
+        {0, 0o0002} ->
+          {a0, 0, x0}
+
+        {0, 0o0003} ->
+          {0, 0, x0}
+
+        {1, 0o0000} ->
+          {a0, b0, 0}
+
+        {1, 0o0003} ->
+          {0, 0, 0}
+
+        {0, 0o0004} ->
+          {a0, a0, x0}
+
+        {0, 0o0010} ->
+          {b0, b0, x0}
+
+        {0, 0o0014} ->
+          {b0, a0, x0}
+
+        {0, 0o0012} ->
+          {b0, 0, x0}
+
+        {0, 0o0005} ->
+          {0, a0, x0}
+
+        {0, 0o0200} ->
+          {x0, b0, x0}
+
+        {0, 0o0400} ->
+          {a0, b0, a0}
+
+        {0, 0o0600} ->
+          {x0, b0, a0}
+
+        {0, 0o0020} ->
+          {a0, b0, b0}
+
+        {0, 0o0040} ->
+          {a0, x0, x0}
+
+        {0, 0o0060} ->
+          {a0, x0, b0}
+
+        {0, 0o0122} ->
+          {a0, b0, sign_extended_exponent(b0)}
+
+        {0, 0o0140} ->
+          {a0, (b0 &&& @expn_cmpl) ||| (x0 &&& @expn_mask), x0}
+
+        {0, 0o0160} ->
+          {a0, (b0 &&& @expn_cmpl) ||| (x0 &&& @expn_mask), sign_extended_exponent(b0)}
+
+        {0, 0o1000} ->
+          {bxor(a0, @word_mask) + 1 &&& @word_mask, b0, x0}
+
+        {0, 0o0401} ->
+          {0, b0, a0}
+      end
+
+    {registers |> set_reg_a(a1) |> set_reg_b(b1) |> set_reg_x(x1) |> pc_next(), memory, map,
+     counts, :continue}
   end
 
   # HALT
@@ -245,13 +327,24 @@ defmodule Sds.Cpu do
     {registers |> pc_next(), memory, map, counts, :halt}
   end
 
-  def load_memory(x, ind, addr, counts, registers, memory, map) do
+  def load_memory(x, ind, addr, counts, x_reg, memory, map) do
     {count, effective_address} =
-      get_effective_address(x, ind, addr, registers, memory, map, @max_indirects)
+      get_effective_address(x, ind, addr, x_reg, memory, map, @max_indirects)
 
     counts = %{counts | r_count: counts.r_count + count}
     {memory, word} = Memory.read_mapped(memory, effective_address, map)
     {memory, word, counts}
+  end
+
+  def store_memory(x, ind, addr, counts, value, x_reg, memory, map) do
+    {count, effective_address} =
+      get_effective_address(x, ind, addr, x_reg, memory, map, @max_indirects)
+
+    counts = %{counts | w_count: counts.w_count + count}
+    # {memory, word} = Memory.read_mapped(memory, effective_address, map)
+    {effective_address, value} |> dbg
+    new_memory = Memory.write_mapped(memory, effective_address, map, value)
+    {new_memory, counts}
   end
 
   def add(a1, a2, carry, x, ovf)
@@ -272,25 +365,25 @@ defmodule Sds.Cpu do
     {a3 &&& @word_mask, new_x, new_ovf}
   end
 
-  def get_effective_address(x, ind, addr, registers, _memory, _map, ct) when ct <= 0,
-    do: raise("indirect loop #{x} #{ind} #{addr} #{registers}")
+  def get_effective_address(x, ind, addr, x_reg, _memory, _map, ct) when ct <= 0,
+    do: raise("indirect loop #{x} #{ind} #{addr} #{x_reg}")
 
-  def get_effective_address(0 = _x, 0 = _ind, addr, _registers, _memory, _map, ct),
+  def get_effective_address(0 = _x, 0 = _ind, addr, _x_reg, _memory, _map, ct),
     do: {@max_indirects - ct, addr}
 
-  def get_effective_address(1 = _x, 0 = _ind, addr, registers, _memory, _map, ct),
-    do: {@max_indirects - ct, addr + (reg_x(registers) &&& 0o37777)}
+  def get_effective_address(1 = _x, 0 = _ind, addr, x_reg, _memory, _map, ct),
+    do: {@max_indirects - ct, addr + (x_reg &&& 0o37777)}
 
-  def get_effective_address(x, 1 = _ind, addr, registers, memory, map, ct) do
+  def get_effective_address(x, 1 = _ind, addr, x_reg, memory, map, ct) do
     x_value =
       case x do
         0 -> 0
-        1 -> reg_x(registers) &&& 0o37777
+        1 -> x_reg &&& 0o37777
       end
 
     {new_memory, word} = Memory.read_mapped(memory, addr + x_value &&& 0o37777, map)
     <<_::1, x::1, _::7, ind::1, address::14>> = <<word::24>>
-    get_effective_address(x, ind, address, registers, new_memory, map, ct - 1)
+    get_effective_address(x, ind, address, x_reg, new_memory, map, ct - 1)
   end
 
   def fetch_instruction(pc, memory, map) do
@@ -310,16 +403,20 @@ defmodule Sds.Cpu do
   def set_reg_ovf(registers, value), do: put_elem(registers, 4, value &&& 1)
 
   def pc_next(registers) do
-    new_pc = (reg_pc(registers) + 1) &&& @addr_mask
+    new_pc = reg_pc(registers) + 1 &&& @addr_mask
     set_reg_pc(registers, new_pc)
   end
 
   def pc_skip(registers) do
-    new_pc = (reg_pc(registers) + 2) &&& @addr_mask
+    new_pc = reg_pc(registers) + 2 &&& @addr_mask
     set_reg_pc(registers, new_pc)
   end
 
   defp sign_extended_exponent(exp) when is_integer(exp) do
-    if (exp &&& @expn_sign) != 0 do ((exp &&& @expn_mask) ||| @expn_cmpl) else (exp &&& @expn_mask) end
+    if (exp &&& @expn_sign) != 0 do
+      (exp &&& @expn_mask) ||| @expn_cmpl
+    else
+      exp &&& @expn_mask
+    end
   end
 end
