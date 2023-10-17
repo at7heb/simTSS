@@ -329,23 +329,30 @@ defmodule Sds.Cpu do
     if m0 >= 2 ** 24 do
       raise "read unassigned memory at #{reg_pc(registers)}"
     end
+
     n0 = reg_a(registers)
     {m1, n1} = {abs24(m0), abs24(n0)}
     scaled_product = 2 * m1 * n1
-    signed_scaled_product = if (bxor(m0, n0) &&& @sign_mask) != 0 do
-      neg48(scaled_product)
-    else
-      scaled_product
-    end
 
-    new_ovf = if (scaled_product &&& @sign_mask48) != 0 do
-      1 # only if m0 = n0 = 0o40000000, then scaled_product is 0o4000000000000000
-    else
-      reg_ovf(registers)
-    end
+    signed_scaled_product =
+      if (bxor(m0, n0) &&& @sign_mask) != 0 do
+        neg48(scaled_product)
+      else
+        scaled_product
+      end
+
+    new_ovf =
+      if (scaled_product &&& @sign_mask48) != 0 do
+        # only if m0 = n0 = 0o40000000, then scaled_product is 0o4000000000000000
+        1
+      else
+        reg_ovf(registers)
+      end
+
     <<a::24, b::24>> = <<signed_scaled_product::48>>
 
-    {set_reg_a(registers, a) |> set_reg_b(b) |> set_reg_ovf(new_ovf) |> pc_next(), memory, map, counts, :continue}
+    {set_reg_a(registers, a) |> set_reg_b(b) |> set_reg_ovf(new_ovf) |> pc_next(), memory, map,
+     counts, :continue}
   end
 
   # DIBV
@@ -355,20 +362,24 @@ defmodule Sds.Cpu do
     if dvzr >= 2 ** 24 do
       raise "read unassigned memory at #{reg_pc(registers)}"
     end
-    dvdnd = (reg_a(registers) <<< 24) ||| reg_b(registers)
+
+    dvdnd = reg_a(registers) <<< 24 ||| reg_b(registers)
     udvzr = abs24(dvzr)
     udvdnd = abs48(dvdnd)
-    uquot = div(div(udvdnd,2), udvzr)
-    urmdr = rem(div(udvdnd,2), udvzr)
+    uquot = div(div(udvdnd, 2), udvzr)
+    urmdr = rem(div(udvdnd, 2), udvzr)
     signs_same = (bxor(reg_a(registers), dvzr) &&& @sign_mask) == 0
     pztv_dvdnd = (reg_a(registers) &&& @sign_mask) == 0
-    {new_a, new_b} = case {signs_same, pztv_dvdnd} do
-      {true, true} -> {uquot, urmdr}
-      {true, false} -> {uquot, neg24(urmdr)}
-      {false, true} -> {neg24(uquot), urmdr}
-      {false, false} -> {neg24(uquot), neg24(urmdr)}
-    end
+
+    {new_a, new_b} =
+      case {signs_same, pztv_dvdnd} do
+        {true, true} -> {uquot, urmdr}
+        {true, false} -> {uquot, neg24(urmdr)}
+        {false, true} -> {neg24(uquot), urmdr}
+        {false, false} -> {neg24(uquot), neg24(urmdr)}
+      end
   end
+
   # NOP
   def exec940(0, _, 0, 0o20, _, _, counts, registers, memory, map) do
     {pc_next(registers), memory, map, counts, :continue}
@@ -591,8 +602,8 @@ defmodule Sds.Cpu do
 
   defp abs24(a) when is_integer(a) and a <= @valu_mask, do: a
   defp abs24(a) when is_integer(a), do: neg24(a)
-  defp neg24(a) when is_integer(a), do: (bxor(a, @word_mask) + 1 ) &&& @word_mask
+  defp neg24(a) when is_integer(a), do: bxor(a, @word_mask) + 1 &&& @word_mask
   defp abs48(a) when is_integer(a) and a < @sign_mask48, do: a
   defp abs48(a) when is_integer(a), do: neg48(a)
-  defp neg48(a) when is_integer(a), do: (bxor(a, @word_mask48) + 1) &&& @word_mask48
+  defp neg48(a) when is_integer(a), do: bxor(a, @word_mask48) + 1 &&& @word_mask48
 end
