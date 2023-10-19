@@ -355,7 +355,7 @@ defmodule Sds.Cpu do
      counts, :continue}
   end
 
-  # DIBV
+  # DIV
   def exec940(0, x, 0, 0o65, ind, addr, counts, registers, memory, map) do
     {memory, dvzr, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
 
@@ -367,7 +367,9 @@ defmodule Sds.Cpu do
     udvzr = abs24(dvzr)
     udvdnd = abs48(dvdnd)
     uquot = div(div(udvdnd, 2), udvzr)
-    urmdr = rem(div(udvdnd, 2), udvzr)
+    uquot_masked = uquot &&& @word_mask
+    new_ovf = if uquot != uquot_masked, do: 1, else: reg_ovf(registers)
+    urmdr = rem(div(udvdnd, 2), udvzr) &&& @word_mask
     signs_same = (bxor(reg_a(registers), dvzr) &&& @sign_mask) == 0
     pztv_dvdnd = (reg_a(registers) &&& @sign_mask) == 0
 
@@ -378,6 +380,9 @@ defmodule Sds.Cpu do
         {false, true} -> {neg24(uquot), urmdr}
         {false, false} -> {neg24(uquot), neg24(urmdr)}
       end
+
+    {set_reg_a(registers, new_a) |> set_reg_b(new_b) |> set_reg_ovf(new_ovf) |> pc_next(), memory,
+     map, counts, :continue}
   end
 
   # NOP
@@ -481,9 +486,135 @@ defmodule Sds.Cpu do
      counts, :continue}
   end
 
+  # ETR - 0o14
+  def exec940(0, x, 0, 0o14, ind, addr, counts, registers, memory, map) do
+      reg_a_op(&band/2, x, ind, addr, counts, registers, memory, map)
+  end
+
+  # MRG - 0o16
+  def exec940(0, x, 0, 0o16, ind, addr, counts, registers, memory, map) do
+    reg_a_op(&bor/2, x, ind, addr, counts, registers, memory, map)
+  end
+
+  # EOR - 0o17
+  def exec940(0, x, 0, 0o17, ind, addr, counts, registers, memory, map) do
+      reg_a_op(&bxor/2, x, ind, addr, counts, registers, memory, map)
+  end
+
+  # SKE - 0o50
+  def exec940(0, x, 0, 0o50, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+    new_pc = reg_pc(registers) + if mem_val == reg_a(registers), do: 2, else: 1
+    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+  end
+
+  # SKG - 0o73
+  def exec940(0, x, 0, 0o73, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+    new_pc = reg_pc(registers) + if val24(reg_a(registers)) > val24(mem_val), do: 2, else: 1
+    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+  end
+
+  # SKR - 0o60
+  def exec940(0, x, 0, 0o60, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if mem_val >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    mem_val = (mem_val - 1) &&& @word_mask
+
+    {memory, counts} =
+      store_memory(x, ind, addr, counts, mem_val, reg_x(registers), memory, map)
+
+    new_pc = reg_pc(registers) + if (mem_val &&& @sign_mask) != 0, do: 2, else: 1
+    new_ovf = if mem_val == 0o37777777, do: 1, else: reg_ovf(registers)
+    {set_reg_pc(registers, new_pc) |> set_reg_ovf(new_ovf), memory, map, counts, :continue}
+  end
+
+  # SKM - 0o70
+  def exec940(0, x, 0, 0o70, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if mem_val >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    masked_mem = mem_val &&& reg_b(registers)
+    masked_a = reg_a(registers) &&& reg_b(registers)
+    new_pc = reg_pc(registers) + if masked_mem == masked_a, do: 2, else: 1
+    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+  end
+
+  # SKN - 0o53
+  def exec940(0, x, 0, 0o53, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if mem_val >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    new_pc = reg_pc(registers) + if (mem_val &&& @sign_mask) != 0, do: 2, else: 1
+    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+  end
+
+  # BRX
+  @bit_9 0o400000
+  def exec940(0, x, 0, 0o41, ind, addr, counts, registers, memory, map) do
+    {count, effective_address} =
+      get_effective_address(x, ind, addr, reg_x(registers), memory, map, @max_indirects)
+
+    new_x = reg_x(registers) + 1
+
+    counts = %{counts | r_count: counts.r_count + count}
+
+    new_pc =
+      if (new_x &&& @bit_9) != 0, do: effective_address, else: pc_next(registers)
+
+    {set_reg_x(registers, new_x) |> set_reg_pc(new_pc), memory, map, counts, :continue}
+  end
+
+  # BRM
+  def exec940(0, x, 0, 0o43, ind, addr, counts, registers, memory, map) do
+    {count, effective_address} =
+      get_effective_address(x, ind, addr, reg_x(registers), memory, map, @max_indirects)
+
+    counts = %{counts | r_count: counts.r_count + count}
+
+    new_m = reg_ovf(registers) <<< 23 ||| reg_pc(registers)
+
+    {memory, counts} =
+      store_memory(x, ind, addr, counts, new_m, reg_x(registers), memory, map)
+
+    new_pc = effective_address + 1
+    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+  end
+
+  # BRR
+  def exec940(0, x, 0, 0o51, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+    new_pc = 1 + (mem_val &&& @addr_mask)
+
+    new_ovf = reg_ovf(registers) ||| mem_val >>> 23
+
+    {set_reg_pc(registers, new_pc) |> set_reg_ovf(new_ovf), memory, map, counts, :continue}
+  end
+
   # HALT
   def exec940(0, _, 0, 0o00, 0 = _, _, counts, registers, memory, map) do
     {registers |> pc_next(), memory, map, counts, :halt}
+  end
+
+  def reg_a_op(op_fun, x, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if mem_val >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    new_a = op_fun.(mem_val, reg_a(registers))
+    {set_reg_a(registers, new_a) |> pc_next(), memory, map, counts, :continue}
   end
 
   def load_memory(x, ind, addr, counts, x_reg, memory, map) do
@@ -603,6 +734,9 @@ defmodule Sds.Cpu do
   defp abs24(a) when is_integer(a) and a <= @valu_mask, do: a
   defp abs24(a) when is_integer(a), do: neg24(a)
   defp neg24(a) when is_integer(a), do: bxor(a, @word_mask) + 1 &&& @word_mask
+  defp val24(a) when is_integer(a) and a <= @valu_mask, do: a
+  # 2s complement negative
+  defp val24(a) when is_integer(a), do: (@sign_mask <<< 1) - a
   defp abs48(a) when is_integer(a) and a < @sign_mask48, do: a
   defp abs48(a) when is_integer(a), do: neg48(a)
   defp neg48(a) when is_integer(a), do: bxor(a, @word_mask48) + 1 &&& @word_mask48
