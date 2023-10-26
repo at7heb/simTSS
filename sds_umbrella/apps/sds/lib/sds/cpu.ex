@@ -36,9 +36,11 @@ defmodule Sds.Cpu do
   @addr_mask 0o37777
   @expn_mask 0o777
   @expn_sign 0o400
+  @shift_count_mask 0o777
   @expn_cmpl 0o77777000
-  @word_mask48 0o7777777777777777
+  @valu_mask48 0o7777777777777777
   @sign_mask48 0o4000000000000000
+  @valu_mask9 0o777
 
   def new(%Machine{} = mach, rc \\ 1) when is_integer(rc) do
     with {:ok, id} <- {:ok, :queue.head(mach.run_queue)},
@@ -559,7 +561,82 @@ defmodule Sds.Cpu do
     {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
   end
 
-  # BRX
+  # SKA - 0o72
+  def exec940(0, x, 0, 0o72, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if mem_val >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    new_pc = reg_pc(registers) + if (mem_val &&& reg_a(registers)) == 0, do: 2, else: 1
+    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+  end
+
+  # SKB - 0o52
+  def exec940(0, x, 0, 0o52, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if mem_val >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    new_pc = reg_pc(registers) + if (mem_val &&& reg_b(registers)) == 0, do: 2, else: 1
+    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+  end
+
+  # SKD - 0o74
+  def exec940(0, x, 0, 0o74, ind, addr, counts, registers, memory, map) do
+    {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+
+    if mem_val >= 2 ** 24 do
+      raise "read unassigned memory at #{reg_pc(registers)}"
+    end
+
+    mem_exp = val_exp(mem_val)
+    b_exp = val_exp(reg_b(registers))
+    new_x = abs(mem_exp - b_exp) &&& @expn_mask
+    new_pc = reg_pc(registers) + if mem_exp  <= b_exp, do: 1, else: 2
+    {set_reg_pc(registers, new_pc) |> set_reg_x(new_x), memory, map, counts, :continue}
+  end
+
+  # Right Shifts 0o66
+    # LRSH N, T 24XXX
+    # RSH  N,T  00xxx
+    # RCY  N,T  20XXX
+  def exec940(0, x, 0, 0o66, ind, addr, counts, registers, memory, map) do
+    {type, count} = get_shift_type_count(x, ind, addr, reg_x(registers), memory, map)
+    << ab::48 >> = << reg_a(registers)::24, reg_b(registers)::24>>
+    new_ab =
+      case type do
+      0o00 -> val48(ab) >>> count
+      0o24 -> ab >>> count
+      0o20 -> << abab::96 >> = << ab::48, ab::48 >>; abab >>> count |> band(@valu_mask48)
+    end
+    << new_a::24, new_b::24 >> = << new_ab::48 >>
+    {set_reg_a(registers, new_a) |> set_reg_b(new_b), memory, map, counts, :continue}
+  end
+
+  # Left Shifts 0o67
+    # NOD  N,T  10XXX
+    # LSH  N,T  00xxx
+    # LCY  N,T  20XXX
+    def exec940(0, x, 0, 0o67, ind, addr, counts, registers, memory, map) do
+      {type, count} = get_shift_type_count(x, ind, addr, reg_x(registers), memory, map)
+      << ab::48 >> = << reg_a(registers)::24, reg_b(registers)::24>>
+      ovf = reg_ovf(registers)
+      # left shifts sometimes set the overflow indicator
+      {new_ab, ovf} =
+        case type do
+        0o00 -> nab = (ab <<< count) &&& @valu_mask48; {nab, (if (bxor(nab, ab) &&& @sign_mask48) != 0, do: 1, else: ovf) }
+        0o10 -> {nod(ab, count, reg_x(registers)), ovf}
+        0o20 -> {(<< abab::96 >> = << ab::48, ab::48 >>; abab <<< count |> band(@valu_mask48)), ovf}
+      end
+      << new_a::24, new_b::24 >> = << new_ab::48 >>
+      {set_reg_a(registers, new_a) |> set_reg_b(new_b) |> set_reg_ovf(ovf), memory, map, counts, :continue}
+    end
+
+    # BRX
   @bit_9 0o400000
   def exec940(0, x, 0, 0o41, ind, addr, counts, registers, memory, map) do
     {count, effective_address} =
@@ -676,6 +753,9 @@ defmodule Sds.Cpu do
     end
   end
 
+  def get_effective_address(x, ind, addr, x_reg, memory, map), do:
+    get_effective_address(x, ind, addr, x_reg, memory, map, @max_indirects)
+
   def get_effective_address(x, ind, addr, x_reg, _memory, _map, ct) when ct <= 0,
     do: raise("indirect loop #{x} #{ind} #{addr} #{x_reg}")
 
@@ -695,6 +775,23 @@ defmodule Sds.Cpu do
     {new_memory, word} = Memory.read_mapped(memory, addr + x_value &&& @addr_mask, map)
     <<_::1, x::1, _::7, ind::1, address::14>> = <<word::24>>
     get_effective_address(x, ind, address, x_reg, new_memory, map, ct - 1)
+  end
+
+  def get_shift_type_count(x, ind, addr, x_reg, memory, map) do
+    ea =
+      cond do
+        ind != 0 -> get_effective_address(x, ind, addr, x_reg, memory, map)
+        x != 0 -> (@shift_count_mask &&& (x + addr))
+                  ||| (addr &&& bnot(@shift_count_mask))
+        true -> addr
+      end
+    << type::5, count::9 >> = <<ea::14>>
+    count = if count > 48, do: 48, else: count
+    {type, count}
+  end
+
+  def nod(ab, count, x_reg) do
+
   end
 
   def fetch_instruction(pc, memory, map) do
@@ -739,5 +836,13 @@ defmodule Sds.Cpu do
   defp val24(a) when is_integer(a), do: (@sign_mask <<< 1) - a
   defp abs48(a) when is_integer(a) and a < @sign_mask48, do: a
   defp abs48(a) when is_integer(a), do: neg48(a)
-  defp neg48(a) when is_integer(a), do: bxor(a, @word_mask48) + 1 &&& @word_mask48
+  defp neg48(a) when is_integer(a), do: (bxor(a, @valu_mask48) + 1) &&& @valu_mask48
+  defp val48(a) when is_integer(a) do
+    cond do
+      (a &&& @sign_mask48) != 0 -> ((@sign_mask48) <<< 1) - a
+      true -> a
+    end
+  end
+  defp val_exp(a) when is_integer(a) and (a &&& @expn_sign) == 0, do: a
+  defp val_exp(a) when is_integer(a), do: ((@expn_sign <<< 1) - a)
 end
