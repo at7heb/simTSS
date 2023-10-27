@@ -632,7 +632,9 @@ defmodule Sds.Cpu do
         0o00 -> nab = (ab <<< count) &&& @word_mask; {nab, x, (if (bxor(nab, ab) &&& @sign_mask48) != 0, do: 1, else: ovf) }
         0o10 -> nod(ab, count, x, ovf, false)
         0o30 -> nod(ab, count, x, ovf, true)
-        0o20 -> {(<< abab::96 >> = << ab::48, ab::48 >>; abab <<< count |> band(@word_mask)), x, ovf}
+        0o20 ->
+          << abab::96 >> = << ab::48, ab::48 >>;
+          {( abab <<< count |> bsr(48) |> band(@word_mask)), x, ovf}
       end
       << new_a::24, new_b::24 >> = << new_ab::48 >>
       {set_reg_a(registers, new_a) |> set_reg_b(new_b) |> set_reg_x(new_x) |> set_reg_ovf(ovf), memory, map, counts, :continue}
