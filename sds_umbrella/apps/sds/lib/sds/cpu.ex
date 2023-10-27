@@ -40,7 +40,6 @@ defmodule Sds.Cpu do
   @expn_cmpl 0o77777000
   @word_mask48 0o7777777777777777
   @sign_mask48 0o4000000000000000
-  @valu_mask9 0o777
 
   def new(%Machine{} = mach, rc \\ 1) when is_integer(rc) do
     with {:ok, id} <- {:ok, :queue.head(mach.run_queue)},
@@ -631,8 +630,8 @@ defmodule Sds.Cpu do
       {new_ab, new_x, ovf} =
         case type do
         0o00 -> nab = (ab <<< count) &&& @word_mask; {nab, x, (if (bxor(nab, ab) &&& @sign_mask48) != 0, do: 1, else: ovf) }
-        0o10 -> nod(ab, count, x, ovf, 0)
-        0o30 -> nod(ab, count, x, ovf, 1)
+        0o10 -> nod(ab, count, x, ovf, false)
+        0o30 -> nod(ab, count, x, ovf, true)
         0o20 -> {(<< abab::96 >> = << ab::48, ab::48 >>; abab <<< count |> band(@word_mask)), x, ovf}
       end
       << new_a::24, new_b::24 >> = << new_ab::48 >>
@@ -793,11 +792,9 @@ defmodule Sds.Cpu do
     {type, count}
   end
 
-  def nod(ab, count, x_reg, ovf, lob_mask) do
+  def nod(ab, count, x_reg, ovf, cycle) do
     count = min(count, 48)
-    new_ab = ab &&& @word_mask
-    # calculate low order bit
-    lob = ((ab >>> 47) &&& 1) &&& lob_mask
+    new_ab = ab &&& @word_mask48
     {new_ab, shift_count} =
       Enum.reduce_while(
         1..count,
@@ -807,7 +804,8 @@ defmodule Sds.Cpu do
           cond do
             t == 1 or t == 2 -> {:halt, acc}
             ct == 0 -> {:halt, acc}
-            true -> {:cont, {((reg <<< 1) ||| lob) &&& @word_mask, ct + 1}}
+            cycle == false -> {:cont, {(reg <<< 1) &&& @word_mask48, ct + 1}}
+            true -> {:cont, {((reg <<< 1) ||| (reg >>> 47)) &&& @word_mask48, ct + 1}}
           end
         end)
     new_x = (x_reg - shift_count) &&& @word_mask
