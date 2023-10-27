@@ -38,7 +38,7 @@ defmodule Sds.Cpu do
   @expn_sign 0o400
   @shift_count_mask 0o777
   @expn_cmpl 0o77777000
-  @valu_mask48 0o7777777777777777
+  @word_mask48 0o7777777777777777
   @sign_mask48 0o4000000000000000
   @valu_mask9 0o777
 
@@ -601,7 +601,7 @@ defmodule Sds.Cpu do
   end
 
   # Right Shifts 0o66
-    # LRSH N, T 24XXX
+    # LRSH N,T  24XXX
     # RSH  N,T  00xxx
     # RCY  N,T  20XXX
   def exec940(0, x, 0, 0o66, ind, addr, counts, registers, memory, map) do
@@ -611,7 +611,7 @@ defmodule Sds.Cpu do
       case type do
       0o00 -> val48(ab) >>> count
       0o24 -> ab >>> count
-      0o20 -> << abab::96 >> = << ab::48, ab::48 >>; abab >>> count |> band(@valu_mask48)
+      0o20 -> << abab::96 >> = << ab::48, ab::48 >>; abab >>> count |> band(@word_mask)
     end
     << new_a::24, new_b::24 >> = << new_ab::48 >>
     {set_reg_a(registers, new_a) |> set_reg_b(new_b), memory, map, counts, :continue}
@@ -619,21 +619,24 @@ defmodule Sds.Cpu do
 
   # Left Shifts 0o67
     # NOD  N,T  10XXX
+    # NODCY N,T 30XXX  ????? from SIMH's sds_cpu.c
     # LSH  N,T  00xxx
     # LCY  N,T  20XXX
     def exec940(0, x, 0, 0o67, ind, addr, counts, registers, memory, map) do
       {type, count} = get_shift_type_count(x, ind, addr, reg_x(registers), memory, map)
       << ab::48 >> = << reg_a(registers)::24, reg_b(registers)::24>>
       ovf = reg_ovf(registers)
+      x = reg_x(registers)
       # left shifts sometimes set the overflow indicator
-      {new_ab, ovf} =
+      {new_ab, new_x, ovf} =
         case type do
-        0o00 -> nab = (ab <<< count) &&& @valu_mask48; {nab, (if (bxor(nab, ab) &&& @sign_mask48) != 0, do: 1, else: ovf) }
-        0o10 -> {nod(ab, count, reg_x(registers)), ovf}
-        0o20 -> {(<< abab::96 >> = << ab::48, ab::48 >>; abab <<< count |> band(@valu_mask48)), ovf}
+        0o00 -> nab = (ab <<< count) &&& @word_mask; {nab, x, (if (bxor(nab, ab) &&& @sign_mask48) != 0, do: 1, else: ovf) }
+        0o10 -> nod(ab, count, x, ovf, 0)
+        0o30 -> nod(ab, count, x, ovf, 1)
+        0o20 -> {(<< abab::96 >> = << ab::48, ab::48 >>; abab <<< count |> band(@word_mask)), x, ovf}
       end
       << new_a::24, new_b::24 >> = << new_ab::48 >>
-      {set_reg_a(registers, new_a) |> set_reg_b(new_b) |> set_reg_ovf(ovf), memory, map, counts, :continue}
+      {set_reg_a(registers, new_a) |> set_reg_b(new_b) |> set_reg_x(new_x) |> set_reg_ovf(ovf), memory, map, counts, :continue}
     end
 
     # BRX
@@ -763,7 +766,7 @@ defmodule Sds.Cpu do
     do: {@max_indirects - ct, addr}
 
   def get_effective_address(1 = _x, 0 = _ind, addr, x_reg, _memory, _map, ct),
-    do: {@max_indirects - ct, addr + (x_reg &&& @addr_mask)}
+    do: {@max_indirects - ct, (addr + x_reg) &&& @addr_mask}
 
   def get_effective_address(x, 1 = _ind, addr, x_reg, memory, map, ct) do
     x_value =
@@ -790,8 +793,25 @@ defmodule Sds.Cpu do
     {type, count}
   end
 
-  def nod(ab, count, x_reg) do
-
+  def nod(ab, count, x_reg, ovf, lob_mask) do
+    count = min(count, 48)
+    new_ab = ab &&& @word_mask
+    # calculate low order bit
+    lob = ((ab >>> 47) &&& 1) &&& lob_mask
+    {new_ab, shift_count} =
+      Enum.reduce_while(
+        1..count,
+        {new_ab, 0},
+        fn _c, {reg, ct} = acc ->
+          t = ((reg >>> 46) &&& 3)
+          cond do
+            t == 1 or t == 2 -> {:halt, acc}
+            ct == 0 -> {:halt, acc}
+            true -> {:cont, {((reg <<< 1) ||| lob) &&& @word_mask, ct + 1}}
+          end
+        end)
+    new_x = (x_reg - shift_count) &&& @word_mask
+    {new_ab, new_x, ovf}
   end
 
   def fetch_instruction(pc, memory, map) do
@@ -836,7 +856,7 @@ defmodule Sds.Cpu do
   defp val24(a) when is_integer(a), do: (@sign_mask <<< 1) - a
   defp abs48(a) when is_integer(a) and a < @sign_mask48, do: a
   defp abs48(a) when is_integer(a), do: neg48(a)
-  defp neg48(a) when is_integer(a), do: (bxor(a, @valu_mask48) + 1) &&& @valu_mask48
+  defp neg48(a) when is_integer(a), do: (bxor(a, @word_mask) + 1) &&& @word_mask
   defp val48(a) when is_integer(a) do
     cond do
       (a &&& @sign_mask48) != 0 -> ((@sign_mask48) <<< 1) - a
