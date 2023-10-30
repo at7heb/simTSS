@@ -489,7 +489,7 @@ defmodule Sds.Cpu do
 
   # ETR - 0o14
   def exec940(0, x, 0, 0o14, ind, addr, counts, registers, memory, map) do
-      reg_a_op(&band/2, x, ind, addr, counts, registers, memory, map)
+    reg_a_op(&band/2, x, ind, addr, counts, registers, memory, map)
   end
 
   # MRG - 0o16
@@ -499,21 +499,26 @@ defmodule Sds.Cpu do
 
   # EOR - 0o17
   def exec940(0, x, 0, 0o17, ind, addr, counts, registers, memory, map) do
-      reg_a_op(&bxor/2, x, ind, addr, counts, registers, memory, map)
+    reg_a_op(&bxor/2, x, ind, addr, counts, registers, memory, map)
   end
 
   # SKE - 0o50
   def exec940(0, x, 0, 0o50, ind, addr, counts, registers, memory, map) do
     {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
-    new_pc = reg_pc(registers) + if mem_val == reg_a(registers), do: 2, else: 1
-    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+    registers = if mem_val == reg_a(registers), do: pc_skip(registers), else: pc_next(registers)
+    {registers, memory, map, counts, :continue}
   end
 
   # SKG - 0o73
   def exec940(0, x, 0, 0o73, ind, addr, counts, registers, memory, map) do
     {memory, mem_val, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
-    new_pc = reg_pc(registers) + if val24(reg_a(registers)) > val24(mem_val), do: 2, else: 1
-    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+
+    registers =
+      if val24(reg_a(registers)) > val24(mem_val),
+        do: pc_skip(registers),
+        else: pc_next(registers)
+
+    {registers, memory, map, counts, :continue}
   end
 
   # SKR - 0o60
@@ -524,14 +529,14 @@ defmodule Sds.Cpu do
       raise "read unassigned memory at #{reg_pc(registers)}"
     end
 
-    mem_val = (mem_val - 1) &&& @word_mask
+    mem_val = mem_val - 1 &&& @word_mask
 
     {memory, counts} =
       store_memory(x, ind, addr, counts, mem_val, reg_x(registers), memory, map)
 
-    new_pc = reg_pc(registers) + if (mem_val &&& @sign_mask) != 0, do: 2, else: 1
+    registers = if (mem_val &&& @sign_mask) != 0, do: pc_skip(registers), else: pc_next(registers)
     new_ovf = if mem_val == 0o37777777, do: 1, else: reg_ovf(registers)
-    {set_reg_pc(registers, new_pc) |> set_reg_ovf(new_ovf), memory, map, counts, :continue}
+    {set_reg_ovf(registers, new_ovf), memory, map, counts, :continue}
   end
 
   # SKM - 0o70
@@ -544,8 +549,8 @@ defmodule Sds.Cpu do
 
     masked_mem = mem_val &&& reg_b(registers)
     masked_a = reg_a(registers) &&& reg_b(registers)
-    new_pc = reg_pc(registers) + if masked_mem == masked_a, do: 2, else: 1
-    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+    registers = if masked_mem == masked_a, do: pc_skip(registers), else: pc_next(registers)
+    {registers, memory, map, counts, :continue}
   end
 
   # SKN - 0o53
@@ -556,8 +561,8 @@ defmodule Sds.Cpu do
       raise "read unassigned memory at #{reg_pc(registers)}"
     end
 
-    new_pc = reg_pc(registers) + if (mem_val &&& @sign_mask) != 0, do: 2, else: 1
-    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+    registers = if (mem_val &&& @sign_mask) != 0, do: pc_skip(registers), else: pc_next(registers)
+    {registers, memory, map, counts, :continue}
   end
 
   # SKA - 0o72
@@ -568,8 +573,10 @@ defmodule Sds.Cpu do
       raise "read unassigned memory at #{reg_pc(registers)}"
     end
 
-    new_pc = reg_pc(registers) + if (mem_val &&& reg_a(registers)) == 0, do: 2, else: 1
-    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+    registers =
+      if (mem_val &&& reg_a(registers)) == 0, do: pc_skip(registers), else: pc_next(registers)
+
+    {registers, memory, map, counts, :continue}
   end
 
   # SKB - 0o52
@@ -580,8 +587,10 @@ defmodule Sds.Cpu do
       raise "read unassigned memory at #{reg_pc(registers)}"
     end
 
-    new_pc = reg_pc(registers) + if (mem_val &&& reg_b(registers)) == 0, do: 2, else: 1
-    {set_reg_pc(registers, new_pc), memory, map, counts, :continue}
+    registers =
+      if (mem_val &&& reg_b(registers)) == 0, do: pc_skip(registers), else: pc_next(registers)
+
+    {registers, memory, map, counts, :continue}
   end
 
   # SKD - 0o74
@@ -595,52 +604,73 @@ defmodule Sds.Cpu do
     mem_exp = val_exp(mem_val)
     b_exp = val_exp(reg_b(registers))
     new_x = abs(mem_exp - b_exp) &&& @expn_mask
-    new_pc = reg_pc(registers) + if mem_exp  <= b_exp, do: 1, else: 2
-    {set_reg_pc(registers, new_pc) |> set_reg_x(new_x), memory, map, counts, :continue}
+    registers = if mem_exp <= b_exp, do: pc_next(registers), else: pc_skip(registers)
+    {set_reg_x(registers, new_x), memory, map, counts, :continue}
   end
 
   # Right Shifts 0o66
-    # LRSH N,T  24XXX
-    # RSH  N,T  00xxx
-    # RCY  N,T  20XXX
+  # LRSH N,T  24XXX
+  # RSH  N,T  00xxx
+  # RCY  N,T  20XXX
   def exec940(0, x, 0, 0o66, ind, addr, counts, registers, memory, map) do
     {type, count} = get_shift_type_count(x, ind, addr, reg_x(registers), memory, map)
-    << ab::48 >> = << reg_a(registers)::24, reg_b(registers)::24>>
+    <<ab::48>> = <<reg_a(registers)::24, reg_b(registers)::24>>
+
     new_ab =
       case type do
-      0o00 -> val48(ab) >>> count
-      0o24 -> ab >>> count
-      0o20 -> << abab::96 >> = << ab::48, ab::48 >>; abab >>> count |> band(@word_mask)
-    end
-    << new_a::24, new_b::24 >> = << new_ab::48 >>
-    {set_reg_a(registers, new_a) |> set_reg_b(new_b), memory, map, counts, :continue}
+        0o00 ->
+          val48(ab) >>> count
+
+        0o24 ->
+          ab >>> count
+
+        0o20 ->
+          <<abab::96>> = <<ab::48, ab::48>>
+          abab >>> count |> band(@word_mask)
+      end
+
+    <<new_a::24, new_b::24>> = <<new_ab::48>>
+    {set_reg_a(registers, new_a) |> set_reg_b(new_b) |> pc_next(), memory, map, counts, :continue}
   end
 
   # Left Shifts 0o67
-    # NOD  N,T  10XXX
-    # NODCY N,T 30XXX  ????? from SIMH's sds_cpu.c
-    # LSH  N,T  00xxx
-    # LCY  N,T  20XXX
-    def exec940(0, x, 0, 0o67, ind, addr, counts, registers, memory, map) do
-      {type, count} = get_shift_type_count(x, ind, addr, reg_x(registers), memory, map)
-      << ab::48 >> = << reg_a(registers)::24, reg_b(registers)::24>>
-      ovf = reg_ovf(registers)
-      x = reg_x(registers)
-      # left shifts sometimes set the overflow indicator
-      {new_ab, new_x, ovf} =
-        case type do
-        0o00 -> nab = (ab <<< count) &&& @word_mask; {nab, x, (if (bxor(nab, ab) &&& @sign_mask48) != 0, do: 1, else: ovf) }
-        0o10 -> nod(ab, count, x, ovf, false)
-        0o30 -> nod(ab, count, x, ovf, true)
-        0o20 ->
-          << abab::96 >> = << ab::48, ab::48 >>;
-          {( abab <<< count |> bsr(48) |> band(@word_mask)), x, ovf}
-      end
-      << new_a::24, new_b::24 >> = << new_ab::48 >>
-      {set_reg_a(registers, new_a) |> set_reg_b(new_b) |> set_reg_x(new_x) |> set_reg_ovf(ovf), memory, map, counts, :continue}
-    end
+  # NOD  N,T  10XXX
+  # NODCY N,T 30XXX  ????? from SIMH's sds_cpu.c
+  # LSH  N,T  00xxx
+  # LCY  N,T  20XXX
+  def exec940(0, x, 0, 0o67, ind, addr, counts, registers, memory, map) do
+    {type, count} = get_shift_type_count(x, ind, addr, reg_x(registers), memory, map)
+    <<ab::48>> = <<reg_a(registers)::24, reg_b(registers)::24>>
+    ovf = reg_ovf(registers)
+    x = reg_x(registers)
+    # left shifts sometimes set the overflow indicator
+    {new_ab, new_x, ovf} =
+      case type do
+        0o00 ->
+          nab = ab <<< count &&& @word_mask
+          {nab, x, if((bxor(nab, ab) &&& @sign_mask48) != 0, do: 1, else: ovf)}
 
-    # BRX
+        0o10 ->
+          nod(ab, count, x, ovf, false)
+
+        0o30 ->
+          nod(ab, count, x, ovf, true)
+
+        0o20 ->
+          <<abab::96>> = <<ab::48, ab::48>>
+          {abab <<< count |> bsr(48) |> band(@word_mask), x, ovf}
+      end
+
+    <<new_a::24, new_b::24>> = <<new_ab::48>>
+
+    {set_reg_a(registers, new_a)
+     |> set_reg_b(new_b)
+     |> set_reg_x(new_x)
+     |> set_reg_ovf(ovf)
+     |> pc_next(), memory, map, counts, :continue}
+  end
+
+  # BRX
   @bit_9 0o400000
   def exec940(0, x, 0, 0o41, ind, addr, counts, registers, memory, map) do
     {count, effective_address} =
@@ -680,6 +710,37 @@ defmodule Sds.Cpu do
     new_ovf = reg_ovf(registers) ||| mem_val >>> 23
 
     {set_reg_pc(registers, new_pc) |> set_reg_ovf(new_ovf), memory, map, counts, :continue}
+  end
+
+  # REO & ROV
+  def exec940(0, 0 = _x, 0, 0o02, 0 = _ind, addr, counts, registers, memory, map) do
+    new_ovf =
+      cond do
+        addr == 0o20010 ->
+          x = reg_x(registers)
+          (bxor(x >>> 8, x >>> 9) &&& 1) ||| reg_ovf(registers)
+
+        addr == 0o20001 ->
+          0
+      end
+
+    {set_reg_ovf(registers, new_ovf) |> pc_next(), memory, map, counts, :continue}
+  end
+
+  # OVT
+  def exec940(0, 0 = _x, 0, 0o40, 0 = _ind, addr, counts, registers, memory, map) do
+    if addr != 0o20001 do
+      throw("bad OVT instruction")
+    end
+
+    new_regs =
+      if reg_ovf(registers) == 1 do
+        pc_next(registers)
+      else
+        pc_skip(registers)
+      end
+
+    {new_regs, memory, map, counts, :continue}
   end
 
   # HALT
@@ -757,8 +818,8 @@ defmodule Sds.Cpu do
     end
   end
 
-  def get_effective_address(x, ind, addr, x_reg, memory, map), do:
-    get_effective_address(x, ind, addr, x_reg, memory, map, @max_indirects)
+  def get_effective_address(x, ind, addr, x_reg, memory, map),
+    do: get_effective_address(x, ind, addr, x_reg, memory, map, @max_indirects)
 
   def get_effective_address(x, ind, addr, x_reg, _memory, _map, ct) when ct <= 0,
     do: raise("indirect loop #{x} #{ind} #{addr} #{x_reg}")
@@ -767,7 +828,7 @@ defmodule Sds.Cpu do
     do: {@max_indirects - ct, addr}
 
   def get_effective_address(1 = _x, 0 = _ind, addr, x_reg, _memory, _map, ct),
-    do: {@max_indirects - ct, (addr + x_reg) &&& @addr_mask}
+    do: {@max_indirects - ct, addr + x_reg &&& @addr_mask}
 
   def get_effective_address(x, 1 = _ind, addr, x_reg, memory, map, ct) do
     x_value =
@@ -784,12 +845,18 @@ defmodule Sds.Cpu do
   def get_shift_type_count(x, ind, addr, x_reg, memory, map) do
     ea =
       cond do
-        ind != 0 -> get_effective_address(x, ind, addr, x_reg, memory, map)
-        x != 0 -> (@shift_count_mask &&& (x + addr))
-                  ||| (addr &&& bnot(@shift_count_mask))
-        true -> addr
+        ind != 0 ->
+          get_effective_address(x, ind, addr, x_reg, memory, map)
+
+        x != 0 ->
+          (@shift_count_mask &&& x + addr) |||
+            (addr &&& bnot(@shift_count_mask))
+
+        true ->
+          addr
       end
-    << type::5, count::9 >> = <<ea::14>>
+
+    <<type::5, count::9>> = <<ea::14>>
     count = if count > 48, do: 48, else: count
     {type, count}
   end
@@ -797,20 +864,24 @@ defmodule Sds.Cpu do
   def nod(ab, count, x_reg, ovf, cycle) do
     count = min(count, 48)
     new_ab = ab &&& @word_mask48
+
     {new_ab, shift_count} =
       Enum.reduce_while(
         1..count,
         {new_ab, 0},
         fn _c, {reg, ct} = acc ->
-          t = ((reg >>> 46) &&& 3)
+          t = reg >>> 46 &&& 3
+
           cond do
             t == 1 or t == 2 -> {:halt, acc}
             ct == 0 -> {:halt, acc}
-            cycle == false -> {:cont, {(reg <<< 1) &&& @word_mask48, ct + 1}}
-            true -> {:cont, {((reg <<< 1) ||| (reg >>> 47)) &&& @word_mask48, ct + 1}}
+            cycle == false -> {:cont, {reg <<< 1 &&& @word_mask48, ct + 1}}
+            true -> {:cont, {(reg <<< 1 ||| reg >>> 47) &&& @word_mask48, ct + 1}}
           end
-        end)
-    new_x = (x_reg - shift_count) &&& @word_mask
+        end
+      )
+
+    new_x = x_reg - shift_count &&& @word_mask
     {new_ab, new_x, ovf}
   end
 
@@ -856,13 +927,15 @@ defmodule Sds.Cpu do
   defp val24(a) when is_integer(a), do: (@sign_mask <<< 1) - a
   defp abs48(a) when is_integer(a) and a < @sign_mask48, do: a
   defp abs48(a) when is_integer(a), do: neg48(a)
-  defp neg48(a) when is_integer(a), do: (bxor(a, @word_mask) + 1) &&& @word_mask
+  defp neg48(a) when is_integer(a), do: bxor(a, @word_mask) + 1 &&& @word_mask
+
   defp val48(a) when is_integer(a) do
     cond do
-      (a &&& @sign_mask48) != 0 -> ((@sign_mask48) <<< 1) - a
+      (a &&& @sign_mask48) != 0 -> (@sign_mask48 <<< 1) - a
       true -> a
     end
   end
+
   defp val_exp(a) when is_integer(a) and (a &&& @expn_sign) == 0, do: a
-  defp val_exp(a) when is_integer(a), do: ((@expn_sign <<< 1) - a)
+  defp val_exp(a) when is_integer(a), do: (@expn_sign <<< 1) - a
 end
