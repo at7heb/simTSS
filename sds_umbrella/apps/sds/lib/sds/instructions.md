@@ -1,6 +1,11 @@
-# SDS 940 Instructions
+# CPU Module Implementation
+
+## SDS 940 Instructions
+
+### User Mode Instructions
 
 #### LOAD & STORE
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |STA|35|✅||
@@ -13,6 +18,7 @@
 |EAX|77|✅||
 
 #### ARITHMETIC
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |SUB|54|✅||
@@ -25,6 +31,7 @@
 |DIV|65|✅||
 
 #### BOOLEAN
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |ETR|14|✅||
@@ -32,6 +39,7 @@
 |EOR|17|✅||
 
 #### REGISTER CHANGE
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |CLA|46 00001|✅||
@@ -57,6 +65,7 @@
 |AXC|46 00401|✅||
 
 #### BRANCH
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |BRU|01|✅||
@@ -65,6 +74,7 @@
 |BRR|51|✅||
 
 #### TEST & SKIP
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |SKE|50|✅||
@@ -77,6 +87,7 @@
 |SKD|74|✅||
 
 #### SHIFT
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |LRSH|66 24XXX|✅||
@@ -88,6 +99,7 @@
 |NOD|67 30XXX|✅||
 
 #### CONTROL
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |HLT|00|✅||
@@ -95,6 +107,7 @@
 |EXU|23|||
 
 #### OVERFLOW
+
 |mnemonic|opcode|impl|test|
 |--------|------|----|----|
 |ROV|02 20001|✅||
