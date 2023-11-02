@@ -29,6 +29,7 @@ defmodule Sds.Cpu do
 
   # 10 equals infinity!
   @max_indirects 10
+  @max_exus 10
   @word_mask 0o77777777
   @sign_mask 0o40000000
   @valu_mask 0o37777777
@@ -106,6 +107,23 @@ defmodule Sds.Cpu do
       raise "no assigned memory at address #{pc}"
     end
 
+    {reason, registers, memory, map, counts} = execute_one_instruction(instruction, registers, mem, map, counts)
+
+    run(registers, memory, map, remove_exu_count(counts), rc - 1, reason)
+  end
+
+  def run({_, _, _, _, _} = registers, memory, map, counts, _, reason) do
+    status =
+      case reason do
+        :new_mem -> :allocate_page
+        :halt -> :halt
+        _ -> :illegal_status
+      end
+
+    {status, registers, memory, map, counts}
+  end
+
+  def execute_one_instruction(instruction, registers, memory, map, counts) do
     <<sys::1, indexed::1, pop::1, opcode::6, ind::1, address::14>> = <<instruction::24>>
     # weird bug: why can't this be here & must be after this???????
     # {registers, memory, map, counts, _reason} = exec940(sys, indexed, pop, opcode, ind, address, counts, registers, mem, map)
@@ -126,20 +144,8 @@ defmodule Sds.Cpu do
       end
 
     {registers, memory, map, counts, reason} =
-      exec940(sys, indexed, pop, opcode, ind, address, counts, registers, mem, map)
-
-    run(registers, memory, map, counts, rc - 1, reason)
-  end
-
-  def run({_, _, _, _, _} = registers, memory, map, counts, _, reason) do
-    status =
-      case reason do
-        :new_mem -> :allocate_page
-        :halt -> :halt
-        _ -> :illegal_status
-      end
-
-    {status, registers, memory, map, counts}
+      exec940(sys, indexed, pop, opcode, ind, address, counts, registers, memory, map)
+    {reason, registers, memory, map, counts}
   end
 
   # LDA
@@ -712,6 +718,25 @@ defmodule Sds.Cpu do
     {set_reg_pc(registers, new_pc) |> set_reg_ovf(new_ovf), memory, map, counts, :continue}
   end
 
+  # EXU
+  def exec940(0, x, 0, 0o23, ind, addr, counts, registers, memory, map) do
+    {memory, instruction, counts} = load_memory(x, ind, addr, counts, registers, memory, map)
+    # |> dbg
+    counts = increment_r_count(counts) |> set_or_increment_exu_count()
+
+    if instruction >= 2 ** 24 do
+      raise "no assigned memory at address #{{x, ind, addr}}"
+    end
+
+    if counts.e_count > @max_exus do
+      raise "max exus at address = #{{x, ind, addr}}"
+    end
+
+    {reason, registers, memory, map, counts} = execute_one_instruction(instruction, registers, memory, map, counts)
+
+    {registers, memory, map, counts, reason}
+  end
+
   # REO & ROV
   def exec940(0, 0 = _x, 0, 0o02, 0 = _ind, addr, counts, registers, memory, map) do
     new_ovf =
@@ -900,6 +925,17 @@ defmodule Sds.Cpu do
   def set_reg_x(registers, value), do: put_elem(registers, 2, value &&& @word_mask)
   def set_reg_pc(registers, value), do: put_elem(registers, 3, value &&& @addr_mask)
   def set_reg_ovf(registers, value), do: put_elem(registers, 4, value &&& 1)
+
+  def increment_r_count(counts), do: %{counts| r_count: counts.r_count + 1}
+
+  def set_or_increment_exu_count(counts) do
+    exu_count = Map.get(counts, :e_count, 0) + 1
+    %{counts| e_count: exu_count}
+  end
+
+  def remove_exu_count(counts) do
+    Map.delete(counts, :e_count)
+  end
 
   def pc_next(registers) do
     new_pc = reg_pc(registers) + 1 &&& @addr_mask
