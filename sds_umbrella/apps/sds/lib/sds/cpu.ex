@@ -107,7 +107,8 @@ defmodule Sds.Cpu do
       raise "no assigned memory at address #{pc}"
     end
 
-    {reason, registers, memory, map, counts} = execute_one_instruction(instruction, registers, mem, map, counts)
+    {reason, registers, memory, map, counts} =
+      execute_one_instruction(instruction, registers, mem, map, counts)
 
     run(registers, memory, map, remove_exu_count(counts), rc - 1, reason)
   end
@@ -145,6 +146,7 @@ defmodule Sds.Cpu do
 
     {registers, memory, map, counts, reason} =
       exec940(sys, indexed, pop, opcode, ind, address, counts, registers, memory, map)
+
     {reason, registers, memory, map, counts}
   end
 
@@ -732,7 +734,8 @@ defmodule Sds.Cpu do
       raise "max exus at address = #{{x, ind, addr}}"
     end
 
-    {reason, registers, memory, map, counts} = execute_one_instruction(instruction, registers, memory, map, counts)
+    {reason, registers, memory, map, counts} =
+      execute_one_instruction(instruction, registers, memory, map, counts)
 
     {registers, memory, map, counts, reason}
   end
@@ -926,11 +929,11 @@ defmodule Sds.Cpu do
   def set_reg_pc(registers, value), do: put_elem(registers, 3, value &&& @addr_mask)
   def set_reg_ovf(registers, value), do: put_elem(registers, 4, value &&& 1)
 
-  def increment_r_count(counts), do: %{counts| r_count: counts.r_count + 1}
+  def increment_r_count(counts), do: %{counts | r_count: counts.r_count + 1}
 
   def set_or_increment_exu_count(counts) do
     exu_count = Map.get(counts, :e_count, 0) + 1
-    %{counts| e_count: exu_count}
+    %{counts | e_count: exu_count}
   end
 
   def remove_exu_count(counts) do
