@@ -1,7 +1,8 @@
 defmodule MemoryTest do
   use ExUnit.Case
   alias Sds.Memory
-  # doctest MemoryMemoryTest
+
+  # doctest MemoryTest
 
   test "initial memory" do
     m = %Memory{}
@@ -68,5 +69,8 @@ defmodule MemoryTest do
     assert m.w_count == count
     # I know, it doesn't need the div if no "* 2"
     assert Enum.sum(vals) == div(count * 2 * (count - 1), 2)
+  end
+
+  test "set up" do
   end
 end
